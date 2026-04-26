@@ -19,7 +19,7 @@ test -x scripts/verify-mcp-only.sh
 bash -n scripts/verify-mcp-only.sh
 bash -n scripts/verify-proxy-gated.sh
 bash -n scripts/verify-hybrid.sh
-docker compose -p agent_sandbox -f compose.yaml -f compose.mcp.github.yaml -f compose.mcp.web.yaml config
+docker compose -p agent_sandbox -f deploy/compose/compose.yaml -f deploy/compose/mcp/github.yaml -f deploy/compose/mcp/web.yaml config
 ```
 
 ## 各模式验证

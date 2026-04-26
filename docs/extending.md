@@ -5,7 +5,7 @@
 1. 在 `mcp/services/<name>/` 下创建新的服务目录。
 2. 按当前 `server.js` 的模式暴露一个进程入口。
 3. 如需复用共享镜像，直接使用 `mcp/Dockerfile` 作为构建基座。
-4. 为它新增一个 `compose.mcp.<name>.yaml` 片段。
+4. 为它新增一个 `deploy/compose/mcp/<name>.yaml` 片段。
 5. 把服务名加入 `config/mcp/enabled.txt`，或在运行时手动通过 `-f` 叠加该片段。
 6. 在 `docs/security-model.md` 或服务专属文档里说明它的用途和信任边界。
 

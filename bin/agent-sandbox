@@ -11,17 +11,18 @@ load_orchestration_helpers() {
 }
 
 compose_args() {
-  local enabled_file line fragment
+  local enabled_file line fragment compose_root
   enabled_file="${MCP_ENABLED_FILE:-config/mcp/enabled.txt}"
+  compose_root="${COMPOSE_ROOT:-deploy/compose}"
 
-  COMPOSE_ARGS=(-p "${COMPOSE_PROJECT_NAME:-agent_sandbox}" -f "$ROOT/compose.yaml")
+  COMPOSE_ARGS=(-p "${COMPOSE_PROJECT_NAME:-agent_sandbox}" -f "$ROOT/$compose_root/compose.yaml")
 
   if [[ -f "$ROOT/$enabled_file" ]]; then
     while IFS= read -r line; do
       line="${line%%#*}"
       line="$(printf '%s' "$line" | tr -d '[:space:]')"
       [[ -n "$line" ]] || continue
-      fragment="$ROOT/compose.mcp.${line}.yaml"
+      fragment="$ROOT/$compose_root/mcp/${line}.yaml"
       if [[ ! -f "$fragment" ]]; then
         printf 'compose_args: compose fragment not found: %s\n' "$fragment" >&2
         return 1
@@ -45,7 +46,7 @@ EOF
 doctor() {
   command -v docker >/dev/null
   command -v jq >/dev/null
-  test -f "$ROOT/compose.yaml"
+  test -f "$ROOT/${COMPOSE_ROOT:-deploy/compose}/compose.yaml"
   test -d "$ROOT/runtime/workspaces"
   test -d "$ROOT/runtime/home"
   test -d "$ROOT/runtime/logs"

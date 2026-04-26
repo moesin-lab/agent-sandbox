@@ -7,7 +7,7 @@
 - 通过 MCP 服务暴露敏感或高价值能力
 - 通过 HTTP 代理提供基于 allowlist 的通用出网能力
 
-顶层入口是 `bin/agent-sandbox`。它会先读取 `config/defaults.env` 中的默认配置，再叠加 `config/profiles/*.env` 中的某个 profile，按 profile 导出对应代理环境变量，随后以根目录 `compose.yaml` 为主入口，再按 `config/mcp/enabled.txt` 自动拼接 `compose.mcp.<name>.yaml` 片段。
+顶层入口是 `bin/agent-sandbox`。它会先读取 `config/defaults.env` 中的默认配置，再叠加 `config/profiles/*.env` 中的某个 profile，按 profile 导出对应代理环境变量，随后以 `deploy/compose/compose.yaml` 为主入口，再按 `config/mcp/enabled.txt` 自动拼接 `deploy/compose/mcp/<name>.yaml` 片段。
 
 ## 组件
 
@@ -44,13 +44,13 @@
 
 `orchestration/lib/common.sh` 提供项目根定位和 env 文件加载等通用辅助函数。`orchestration/lib/profile.sh` 负责加载所选 profile，并导出 Compose 和 sandbox 容器所需的代理环境变量。
 
-根目录 `compose.yaml` 声明稳定主干服务和网络；`compose.mcp.<name>.yaml` 为单个 MCP 服务提供可插拔片段。
+`deploy/compose/compose.yaml` 声明稳定主干服务和网络；`deploy/compose/mcp/<name>.yaml` 为单个 MCP 服务提供可插拔片段。
 
 ## 运行流程
 
 1. `bin/agent-sandbox up <profile>` 先加载默认配置和指定 profile。
 2. profile 会决定代理环境变量是否启用，以及该模式下预期应有哪些服务。
-3. `docker compose` 以根目录 `compose.yaml` 为主文件，并按启用列表叠加 MCP 片段。
+3. `docker compose` 以 `deploy/compose/compose.yaml` 为主文件，并按启用列表叠加 MCP 片段。
 4. sandbox 使用仓库内管理的挂载目录来承载 workspace、日志、状态和 home 数据。
 5. sandbox 的网络访问会根据所选 profile 直接失败、通过 Squid 转发，或与 MCP sidecar 组合使用。
 

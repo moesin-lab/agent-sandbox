@@ -1,9 +1,9 @@
 services:
-  mcp-web:
+  mcp-github:
     build:
-      context: ./mcp
+      context: ../../mcp
     image: ${MCP_BASE_IMAGE:-agent-sandbox-mcp:dev}
-    command: ["node", "services/web/server.js"]
+    command: ["node", "services/github/server.js"]
     networks:
       - agent_net
       - egress_net
