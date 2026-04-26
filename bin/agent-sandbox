@@ -36,19 +36,26 @@ case "${1:-}" in
     load_orchestration_helpers
     profile="${2:-}"
     load_profile "$profile"
-    docker build -t "$SANDBOX_IMAGE" "$ROOT/sandbox"
+    compose_env
+    docker compose -f "$ROOT/orchestration/compose.yaml" up -d --build
     ;;
   down)
-    echo "down not implemented yet in this task" >&2
-    exit 1
+    load_orchestration_helpers
+    load_profile "${2:-}"
+    compose_env
+    docker compose -f "$ROOT/orchestration/compose.yaml" down
     ;;
   shell)
-    echo "shell not implemented yet in this task" >&2
-    exit 1
+    load_orchestration_helpers
+    load_profile "${2:-}"
+    compose_env
+    docker compose -f "$ROOT/orchestration/compose.yaml" exec sandbox zsh -i
     ;;
   logs)
-    echo "logs not implemented yet in this task" >&2
-    exit 1
+    load_orchestration_helpers
+    load_profile "${2:-}"
+    compose_env
+    docker compose -f "$ROOT/orchestration/compose.yaml" logs --tail=50
     ;;
   doctor) doctor ;;
   *) usage; exit 1 ;;

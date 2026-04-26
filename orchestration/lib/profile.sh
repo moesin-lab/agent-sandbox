@@ -21,3 +21,13 @@ load_profile() {
   fi
   load_env_file "$root/config/profiles/${profile}.env"
 }
+
+compose_env() {
+  if [[ "${ENABLE_PROXY:-0}" == "1" ]]; then
+    export HTTP_PROXY="http://proxy:3128"
+    export HTTPS_PROXY="http://proxy:3128"
+  else
+    export HTTP_PROXY=""
+    export HTTPS_PROXY=""
+  fi
+}

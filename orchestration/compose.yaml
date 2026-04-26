@@ -1,0 +1,36 @@
+services:
+  sandbox:
+    build:
+      context: ../sandbox
+    image: ${SANDBOX_IMAGE:-agent-sandbox:dev}
+    volumes:
+      - ../runtime/workspaces:/workspace
+      - ../runtime/logs:/runtime/logs
+      - ../runtime/state:/runtime/state
+      - ../runtime/home:/home/node
+    environment:
+      HTTP_PROXY: ${HTTP_PROXY:-}
+      HTTPS_PROXY: ${HTTPS_PROXY:-}
+    depends_on:
+      - proxy
+      - mcp-github
+      - mcp-web
+
+  proxy:
+    image: ubuntu/squid:latest
+    entrypoint:
+      - /entrypoint.sh
+    volumes:
+      - ../proxy/squid.conf:/etc/squid/squid.conf:ro
+      - ../proxy/entrypoint.sh:/entrypoint.sh:ro
+      - ../config/proxy-rules:/rules:ro
+
+  mcp-github:
+    build:
+      context: ../mcp
+    command: ["node", "services/github/server.js"]
+
+  mcp-web:
+    build:
+      context: ../mcp
+    command: ["node", "services/web/server.js"]
