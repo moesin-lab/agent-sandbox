@@ -15,3 +15,8 @@
 - `bin/agent-sandbox shell`
 - `bin/agent-sandbox logs`
 - `bin/agent-sandbox doctor`
+
+## MCP Services
+
+- `github`: 受控敏感操作骨架
+- `web`: 受控搜索和抓取骨架
