@@ -19,8 +19,10 @@ test -x scripts/verify-mcp-only.sh
 bash -n scripts/verify-mcp-only.sh
 bash -n scripts/verify-proxy-gated.sh
 bash -n scripts/verify-hybrid.sh
-docker compose -p agent_sandbox -f deploy/compose/compose.yaml -f deploy/compose/mcp/github.yaml -f deploy/compose/mcp/web.yaml config
+docker compose -p agent_sandbox -f deploy/compose/compose.yaml config
 ```
+
+注意：`docker compose config` 会把宿主机环境变量展开到输出里。如果你已经导出了 `GITHUB_PERSONAL_ACCESS_TOKEN`，不要把这段输出贴到外部系统。
 
 ## 各模式验证
 
@@ -48,7 +50,8 @@ docker compose -p agent_sandbox -f deploy/compose/compose.yaml -f deploy/compose
 
 1. 运行 `bin/agent-sandbox up hybrid`。
 2. 在 sandbox 内访问 `https://registry.npmjs.org`，预期成功。
-3. 在 sandbox 内访问 `http://mcp-web:3102/health`，预期成功。
+3. 在 sandbox 内访问 `http://mcp-gateway:8080/status`，预期成功。
+4. 读取 `MCP_GITHUB_URL`，预期默认指向 `http://mcp-gateway:8080/servers/github/mcp`。
 
 对应脚本：
 

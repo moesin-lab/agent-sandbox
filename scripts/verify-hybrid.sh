@@ -12,15 +12,6 @@ compose() {
   compose_root="${COMPOSE_ROOT:-deploy/compose}"
   args=(-p "$COMPOSE_PROJECT_NAME" -f "$ROOT/$compose_root/compose.yaml")
 
-  if [[ -f "$ROOT/$MCP_ENABLED_FILE" ]]; then
-    while IFS= read -r line; do
-      line="${line%%#*}"
-      line="$(printf '%s' "$line" | tr -d '[:space:]')"
-      [[ -n "$line" ]] || continue
-      args+=(-f "$ROOT/$compose_root/mcp/${line}.yaml")
-    done < "$ROOT/$MCP_ENABLED_FILE"
-  fi
-
   docker compose "${args[@]}" "$@"
 }
 
@@ -33,6 +24,7 @@ trap cleanup EXIT
 "$ROOT/bin/agent-sandbox" up hybrid
 compose exec -T sandbox command -v curl >/dev/null
 compose exec -T sandbox curl --fail --silent --show-error -I https://registry.npmjs.org >/dev/null
-compose exec -T sandbox curl --fail --silent --show-error http://mcp-web:3102/health >/dev/null
+compose exec -T sandbox curl --fail --silent --show-error http://mcp-gateway:8080/status >/dev/null
+compose exec -T sandbox sh -lc 'test "$MCP_GITHUB_URL" = "http://mcp-gateway:8080/servers/github/mcp"'
 
 echo "verify-hybrid: ok"

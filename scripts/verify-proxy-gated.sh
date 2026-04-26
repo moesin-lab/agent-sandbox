@@ -12,15 +12,6 @@ compose() {
   compose_root="${COMPOSE_ROOT:-deploy/compose}"
   args=(-p "$COMPOSE_PROJECT_NAME" -f "$ROOT/$compose_root/compose.yaml")
 
-  if [[ -f "$ROOT/$MCP_ENABLED_FILE" ]]; then
-    while IFS= read -r line; do
-      line="${line%%#*}"
-      line="$(printf '%s' "$line" | tr -d '[:space:]')"
-      [[ -n "$line" ]] || continue
-      args+=(-f "$ROOT/$compose_root/mcp/${line}.yaml")
-    done < "$ROOT/$MCP_ENABLED_FILE"
-  fi
-
   docker compose "${args[@]}" "$@"
 }
 

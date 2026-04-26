@@ -7,7 +7,7 @@
 - 通过 MCP 服务暴露敏感或高价值能力
 - 通过 HTTP 代理提供基于 allowlist 的通用出网能力
 
-顶层入口是 `bin/agent-sandbox`。它会先读取 `config/defaults.env` 中的默认配置，再叠加 `config/profiles/*.env` 中的某个 profile，按 profile 导出对应代理环境变量，随后以 `deploy/compose/compose.yaml` 为主入口，再按 `config/mcp/enabled.txt` 自动拼接 `deploy/compose/mcp/<name>.yaml` 片段。
+顶层入口是 `bin/agent-sandbox`。它会先读取 `config/defaults.env` 中的默认配置，再叠加 `config/profiles/*.env` 中的某个 profile，按 profile 导出对应代理环境变量，然后直接启动 `deploy/compose/compose.yaml` 里定义的固定拓扑。
 
 ## 组件
 
@@ -22,14 +22,14 @@
 
 它的 entrypoint 会准备运行目录、启动 watchdog、调用 MCP 启动辅助脚本，然后再执行容器主命令。
 
-### `mcp/`
+### `mcp-gateway/`
 
-`mcp` 模块提供共享基础镜像，具体 MCP 能力通过 compose 片段接入。当前 starter kit 自带：
+`mcp-gateway` 模块是 MCP 平面的统一入口。当前它做两件事：
 
-- `mcp-github`
-- `mcp-web`
+- 运行 `mcp-proxy`
+- 在容器内拉起官方 `github-mcp-server stdio`
 
-`mcp/Dockerfile` 提供共享基础镜像，让多个 `mcp-*` 服务在不重复造轮子的前提下复用同一构建基座。哪些 MCP 真的接入当前部署，不由容器内 profile 再决定，而是直接由 `config/mcp/enabled.txt` 和对应的 compose 片段决定。
+`config/mcp-gateway/servers.json` 决定 named servers 的路径映射。当前内置的 server 名是 `github`，因此对 sandbox 暴露的路径是 `/servers/github/mcp`。
 
 ### `proxy/`
 
@@ -44,16 +44,20 @@
 
 `orchestration/lib/common.sh` 提供项目根定位和 env 文件加载等通用辅助函数。`orchestration/lib/profile.sh` 负责加载所选 profile，并导出 Compose 和 sandbox 容器所需的代理环境变量。
 
-`deploy/compose/compose.yaml` 声明稳定主干服务和网络；`deploy/compose/mcp/<name>.yaml` 为单个 MCP 服务提供可插拔片段。
+`deploy/compose/compose.yaml` 直接声明三个稳定服务和网络：
+
+- `sandbox`
+- `proxy`
+- `mcp-gateway`
 
 ## 运行流程
 
 1. `bin/agent-sandbox up <profile>` 先加载默认配置和指定 profile。
-2. profile 会决定代理环境变量是否启用，以及该模式下预期应有哪些服务。
-3. `docker compose` 以 `deploy/compose/compose.yaml` 为主文件，并按启用列表叠加 MCP 片段。
+2. profile 会决定代理环境变量是否启用，以及该模式下 MCP 和 proxy 的预期角色。
+3. `docker compose` 直接以 `deploy/compose/compose.yaml` 启动固定拓扑。
 4. sandbox 使用仓库内管理的挂载目录来承载 workspace、日志、状态和 home 数据。
-5. sandbox 的网络访问会根据所选 profile 直接失败、通过 Squid 转发，或与 MCP sidecar 组合使用。
+5. sandbox 的普通网络访问会根据所选 profile 直接失败或通过 Squid 转发；MCP 工具流量则走 `mcp-gateway` 的 named server 路径。
 
 ## 当前范围
 
-这个实现刻意保持在 starter kit 范围内。当前主 compose 只承载稳定基础设施，MCP 服务通过片段接入；profile env 文件主要控制的是网络环境和运行意图，而不是完全动态生成服务图。所以这里的文档和验证脚本应该被理解为“当前脚手架的使用说明”，而不是“已经完全由策略驱动的编排系统”。
+这个实现刻意保持在 starter kit 范围内。当前主 compose 使用固定拓扑，新增 MCP 的默认方式是扩展 `mcp-gateway` 镜像和 named server 配置，而不是继续膨胀 compose 服务图。

@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "github": {
+      "timeout": 60,
+      "command": "/usr/local/bin/github-mcp-server",
+      "args": ["stdio"],
+      "transportType": "stdio"
+    }
+  }
+}

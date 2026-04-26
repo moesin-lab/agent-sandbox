@@ -2,21 +2,20 @@
 
 ## 新增 MCP 服务
 
-1. 在 `mcp/services/<name>/` 下创建新的服务目录。
-2. 按当前 `server.js` 的模式暴露一个进程入口。
-3. 如需复用共享镜像，直接使用 `mcp/Dockerfile` 作为构建基座。
-4. 为它新增一个 `deploy/compose/mcp/<name>.yaml` 片段。
-5. 把服务名加入 `config/mcp/enabled.txt`，或在运行时手动通过 `-f` 叠加该片段。
-6. 在 `docs/security-model.md` 或服务专属文档里说明它的用途和信任边界。
+1. 把新的 `stdio` MCP server 预装进 `mcp-gateway` 镜像。
+2. 在 `config/mcp-gateway/servers.json` 里新增一个 named server。
+3. 约定它的访问路径为 `/servers/<name>/...`。
+4. 在 `docs/security-model.md` 或服务专属文档里说明它的用途、凭据边界和信任边界。
+5. 如果它需要新的环境变量或 secret，只注入 `mcp-gateway`，不要注入 `sandbox` 或普通 `proxy`。
 
-MCP 服务应该尽量窄。相比重新包装一个“大而全的 shell 入口”，更小、更易审查的接口通常更合理。
+MCP 服务应该尽量窄。相比继续平铺很多容器，把多个 `stdio` server 收口在 `mcp-gateway` 的 named server 配置里，更符合这个项目当前的默认路径。
 
 ## 新增运行模式
 
 1. 新建 `config/profiles/<profile>.env`。
 2. 设置 `orchestration/lib/profile.sh` 使用到的开关。
 3. 明确这个模式是否应注入代理变量。
-4. 明确这个模式预期应暴露哪些 MCP 服务。
+4. 明确这个模式里 `proxy` 和 `mcp-gateway` 的预期角色。
 5. 在 `docs/profiles.md` 里记录这个模式。
 6. 如果这个模式有值得反复验证的行为，就补一份验证脚本。
 
