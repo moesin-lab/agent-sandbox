@@ -33,8 +33,10 @@ doctor() {
 
 case "${1:-}" in
   up)
-    echo "up not implemented yet in this task" >&2
-    exit 1
+    load_orchestration_helpers
+    profile="${2:-}"
+    load_profile "$profile"
+    docker build -t "$SANDBOX_IMAGE" "$ROOT/sandbox"
     ;;
   down)
     echo "down not implemented yet in this task" >&2
