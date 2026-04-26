@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+# shellcheck disable=SC1091
+source "$ROOT/orchestration/lib/common.sh"
+# shellcheck disable=SC1091
+source "$ROOT/orchestration/lib/profile.sh"
+
+usage() {
+  cat <<'EOF'
+Usage:
+  bin/agent-sandbox up [profile]
+  bin/agent-sandbox down
+  bin/agent-sandbox shell
+  bin/agent-sandbox logs
+  bin/agent-sandbox doctor
+EOF
+}
+
+doctor() {
+  command -v docker >/dev/null
+  command -v jq >/dev/null
+  test -d "$ROOT/runtime/workspaces"
+  test -d "$ROOT/runtime/home"
+  test -d "$ROOT/runtime/logs"
+  test -d "$ROOT/runtime/state"
+  echo "doctor: ok"
+}
+
+case "${1:-}" in
+  up) echo "up not implemented yet in this task" ;;
+  down) echo "down not implemented yet in this task" ;;
+  shell) echo "shell not implemented yet in this task" ;;
+  logs) echo "logs not implemented yet in this task" ;;
+  doctor) doctor ;;
+  *) usage; exit 1 ;;
+esac
