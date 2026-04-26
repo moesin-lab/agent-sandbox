@@ -14,6 +14,14 @@
 - `proxy-gated`: 通过仓库代理访问 allowlist 目标
 - `hybrid`: 同时保留代理出网和 MCP sidecar
 
+## Compose 入口
+
+- 主入口：根目录 `compose.yaml`
+- MCP 扩展：根目录 `compose.mcp.<name>.yaml`
+- 启用列表：`config/mcp/enabled.txt`
+- 也可以直接使用原生 compose 叠加：
+  - `docker compose -f compose.yaml -f compose.mcp.github.yaml -f compose.mcp.web.yaml config`
+
 详细说明见：
 
 - `docs/architecture.md`

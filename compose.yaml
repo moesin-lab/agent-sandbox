@@ -1,0 +1,32 @@
+services:
+  sandbox:
+    build:
+      context: ./sandbox
+    image: ${SANDBOX_IMAGE:-agent-sandbox:dev}
+    volumes:
+      - ./runtime/workspaces:/workspace
+      - ./runtime/logs:/runtime/logs
+      - ./runtime/state:/runtime/state
+      - ./runtime/home:/home/node
+    environment:
+      HTTP_PROXY: ${HTTP_PROXY:-}
+      HTTPS_PROXY: ${HTTPS_PROXY:-}
+    depends_on:
+      - proxy
+    networks:
+      - agent_net
+
+  proxy:
+    build:
+      context: ./proxy
+    image: ${PROXY_IMAGE:-agent-sandbox-proxy:dev}
+    volumes:
+      - ./config/proxy-rules:/rules:ro
+    networks:
+      - agent_net
+      - egress_net
+
+networks:
+  agent_net:
+    internal: true
+  egress_net:

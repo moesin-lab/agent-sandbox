@@ -10,6 +10,27 @@ load_orchestration_helpers() {
   source "$ROOT/orchestration/lib/profile.sh"
 }
 
+compose_args() {
+  local enabled_file line fragment
+  enabled_file="${MCP_ENABLED_FILE:-config/mcp/enabled.txt}"
+
+  COMPOSE_ARGS=(-p "${COMPOSE_PROJECT_NAME:-agent_sandbox}" -f "$ROOT/compose.yaml")
+
+  if [[ -f "$ROOT/$enabled_file" ]]; then
+    while IFS= read -r line; do
+      line="${line%%#*}"
+      line="$(printf '%s' "$line" | tr -d '[:space:]')"
+      [[ -n "$line" ]] || continue
+      fragment="$ROOT/compose.mcp.${line}.yaml"
+      if [[ ! -f "$fragment" ]]; then
+        printf 'compose_args: compose fragment not found: %s\n' "$fragment" >&2
+        return 1
+      fi
+      COMPOSE_ARGS+=(-f "$fragment")
+    done < "$ROOT/$enabled_file"
+  fi
+}
+
 usage() {
   cat <<'EOF'
 Usage:
@@ -24,6 +45,7 @@ EOF
 doctor() {
   command -v docker >/dev/null
   command -v jq >/dev/null
+  test -f "$ROOT/compose.yaml"
   test -d "$ROOT/runtime/workspaces"
   test -d "$ROOT/runtime/home"
   test -d "$ROOT/runtime/logs"
@@ -37,16 +59,26 @@ case "${1:-}" in
     profile="${2:-}"
     load_profile "$profile"
     compose_env
-    docker compose -f "$ROOT/orchestration/compose.yaml" up -d --build
+    compose_args
+    docker compose "${COMPOSE_ARGS[@]}" up -d
     ;;
   down)
-    docker compose -f "$ROOT/orchestration/compose.yaml" down
+    load_orchestration_helpers
+    load_env_file "$ROOT/config/defaults.env"
+    compose_args
+    docker compose "${COMPOSE_ARGS[@]}" down
     ;;
   shell)
-    docker compose -f "$ROOT/orchestration/compose.yaml" exec sandbox zsh -i
+    load_orchestration_helpers
+    load_env_file "$ROOT/config/defaults.env"
+    compose_args
+    docker compose "${COMPOSE_ARGS[@]}" exec sandbox zsh -i
     ;;
   logs)
-    docker compose -f "$ROOT/orchestration/compose.yaml" logs --tail=50
+    load_orchestration_helpers
+    load_env_file "$ROOT/config/defaults.env"
+    compose_args
+    docker compose "${COMPOSE_ARGS[@]}" logs --tail=50
     ;;
   doctor) doctor ;;
   *) usage; exit 1 ;;

@@ -2,14 +2,25 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-COMPOSE_FILE="$ROOT/orchestration/compose.yaml"
 set -a
 # shellcheck disable=SC1091
 source "$ROOT/config/defaults.env"
 set +a
 
 compose() {
-  docker compose -p "$COMPOSE_PROJECT_NAME" -f "$COMPOSE_FILE" "$@"
+  local args
+  args=(-p "$COMPOSE_PROJECT_NAME" -f "$ROOT/compose.yaml")
+
+  if [[ -f "$ROOT/$MCP_ENABLED_FILE" ]]; then
+    while IFS= read -r line; do
+      line="${line%%#*}"
+      line="$(printf '%s' "$line" | tr -d '[:space:]')"
+      [[ -n "$line" ]] || continue
+      args+=(-f "$ROOT/compose.mcp.${line}.yaml")
+    done < "$ROOT/$MCP_ENABLED_FILE"
+  fi
+
+  docker compose "${args[@]}" "$@"
 }
 
 cleanup() {

@@ -7,7 +7,7 @@
 - 通过 MCP 服务暴露敏感或高价值能力
 - 通过 HTTP 代理提供基于 allowlist 的通用出网能力
 
-顶层入口是 `bin/agent-sandbox`。它会先读取 `config/defaults.env` 中的默认配置，再叠加 `config/profiles/*.env` 中的某个 profile，按 profile 导出对应代理环境变量，最后把生命周期操作交给 `orchestration/compose.yaml` 中的 Docker Compose 编排。
+顶层入口是 `bin/agent-sandbox`。它会先读取 `config/defaults.env` 中的默认配置，再叠加 `config/profiles/*.env` 中的某个 profile，按 profile 导出对应代理环境变量，随后以根目录 `compose.yaml` 为主入口，再按 `config/mcp/enabled.txt` 自动拼接 `compose.mcp.<name>.yaml` 片段。
 
 ## 组件
 
@@ -24,12 +24,12 @@
 
 ### `mcp/`
 
-`mcp` 模块包含一组小型服务进程，用来暴露受控能力。当前 starter kit 自带：
+`mcp` 模块提供共享基础镜像，具体 MCP 能力通过 compose 片段接入。当前 starter kit 自带：
 
 - `mcp-github`
 - `mcp-web`
 
-`mcp/lib/profile-loader.js` 会校验 MCP profile 的 JSON 定义，用来决定某个 MCP profile 应暴露哪些服务。
+`mcp/lib/profile-loader.js` 会校验 MCP profile 的 JSON 定义。`mcp/Dockerfile` 则提供共享基础镜像，让多个 `mcp-*` 服务在不重复造轮子的前提下复用同一构建基座。
 
 ### `proxy/`
 
@@ -44,16 +44,16 @@
 
 `orchestration/lib/common.sh` 提供项目根定位和 env 文件加载等通用辅助函数。`orchestration/lib/profile.sh` 负责加载所选 profile，并导出 Compose 和 sandbox 容器所需的代理环境变量。
 
-`orchestration/compose.yaml` 把 sandbox、proxy 和 MCP 服务声明成同一个栈。
+根目录 `compose.yaml` 声明稳定主干服务和网络；`compose.mcp.<name>.yaml` 为单个 MCP 服务提供可插拔片段。
 
 ## 运行流程
 
 1. `bin/agent-sandbox up <profile>` 先加载默认配置和指定 profile。
 2. profile 会决定代理环境变量是否启用，以及该模式下预期应有哪些服务。
-3. `docker compose` 负责构建并启动整套服务。
+3. `docker compose` 以根目录 `compose.yaml` 为主文件，并按启用列表叠加 MCP 片段。
 4. sandbox 使用仓库内管理的挂载目录来承载 workspace、日志、状态和 home 数据。
 5. sandbox 的网络访问会根据所选 profile 直接失败、通过 Squid 转发，或与 MCP sidecar 组合使用。
 
 ## 当前范围
 
-这个实现刻意保持在 starter kit 范围内。当前 compose 文件会静态声明所有服务，profile env 文件主要控制的是网络环境和运行意图，而不是动态裁剪 Compose 服务图。所以这里的文档和验证脚本应该被理解为“当前脚手架的使用说明”，而不是“已经完全由策略驱动的编排系统”。
+这个实现刻意保持在 starter kit 范围内。当前主 compose 只承载稳定基础设施，MCP 服务通过片段接入；profile env 文件主要控制的是网络环境和运行意图，而不是完全动态生成服务图。所以这里的文档和验证脚本应该被理解为“当前脚手架的使用说明”，而不是“已经完全由策略驱动的编排系统”。
