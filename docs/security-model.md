@@ -33,7 +33,7 @@ proxy 是通用出网的受控接口。它负责执行 `config/proxy-rules/` 里
 - 启用代理的 profile 会注入 `HTTP_PROXY` 和 `HTTPS_PROXY`
 - proxy 规则会在启动时被复制进 Squid 容器
 - runtime 数据统一从仓库管理目录挂载
-- MCP profile 定义在使用前会先做校验
+- 启用哪些 MCP 服务，由 `config/mcp/enabled.txt` 明确决定
 
 这个 starter kit 还不能宣称自己对所有绕过手法都具备完整隔离能力。尤其是当前 profile 选择对环境变量和操作流程的影响大于对 Compose 拓扑本身的重写。
 

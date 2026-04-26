@@ -22,7 +22,7 @@
 
 - `config/`
   - 放配置源
-  - 例如默认值、profile、MCP 启用列表、代理规则
+  - 例如默认值、运行模式、MCP 启用列表、代理规则
 - `deploy/compose/`
   - 放部署拓扑
   - `compose.yaml` 是主干
@@ -41,6 +41,19 @@
 
 - `config` 负责“应该怎样”
 - `deploy` 负责“实际怎么起”
+
+当前 `config/` 里真正会参与运行链路的只有四类文件：
+
+- `config/defaults.env`
+  - 全局默认值，例如镜像名、`COMPOSE_ROOT`、`MCP_ENABLED_FILE`
+- `config/profiles/*.env`
+  - 运行模式，例如 `mcp-only`、`proxy-gated`、`hybrid`
+- `config/mcp/enabled.txt`
+  - 当前要叠加哪些 MCP compose 片段
+- `config/proxy-rules/*.txt`
+  - 代理 allowlist / blocklist
+
+这里刻意不再保留一套额外的 “MCP profile” JSON。多个 MCP 容器已经直接通过 `enabled.txt` 决定是否接入部署链路，避免同一件事出现两套开关。
 
 ## 快速开始
 
@@ -102,6 +115,11 @@ docker compose -p agent_sandbox \
 - `deploy/compose/mcp/github.yaml`
 - `deploy/compose/mcp/web.yaml`
 - 以及未来新增的其他 MCP 片段
+
+这就是当前唯一生效的 MCP 开关来源。也就是说：
+
+- 想让某个 MCP 接入部署：改 `enabled.txt`
+- 想临时绕过项目封装：手写 `docker compose -f ...`
 
 如果你不想走项目封装，也可以直接手写 `docker compose -f ...`。
 

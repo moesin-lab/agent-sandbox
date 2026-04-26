@@ -1,4 +1,0 @@
-{
-  "name": "safe-dev",
-  "services": ["github", "web"]
-}

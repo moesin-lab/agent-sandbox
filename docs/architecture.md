@@ -29,7 +29,7 @@
 - `mcp-github`
 - `mcp-web`
 
-`mcp/lib/profile-loader.js` 会校验 MCP profile 的 JSON 定义。`mcp/Dockerfile` 则提供共享基础镜像，让多个 `mcp-*` 服务在不重复造轮子的前提下复用同一构建基座。
+`mcp/Dockerfile` 提供共享基础镜像，让多个 `mcp-*` 服务在不重复造轮子的前提下复用同一构建基座。哪些 MCP 真的接入当前部署，不由容器内 profile 再决定，而是直接由 `config/mcp/enabled.txt` 和对应的 compose 片段决定。
 
 ### `proxy/`
 
