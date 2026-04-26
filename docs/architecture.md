@@ -7,7 +7,7 @@
 - 通过 MCP 服务暴露敏感或高价值能力
 - 通过 HTTP 代理提供基于 allowlist 的通用出网能力
 
-顶层入口是 `bin/agent-sandbox`。它会先读取 `config/defaults.env` 中的默认配置，再叠加 `config/profiles/*.env` 中的某个 profile，按 profile 导出对应代理环境变量，然后直接启动 `deploy/compose/compose.yaml` 里定义的固定拓扑。
+顶层入口是 `bin/agent-sandbox`。它会读取 `config/defaults.env` 中的默认配置，然后直接启动 `deploy/compose/compose.yaml` 里定义的固定拓扑。
 
 ## 组件
 
@@ -33,7 +33,7 @@
 
 ### `proxy/`
 
-代理服务运行 Squid，并在启动时把配置好的 allowlist 和 blocklist 拷贝进容器。启用代理的 profile 会注入：
+代理服务运行 Squid，并在启动时把配置好的 allowlist 和 blocklist 拷贝进容器。当前固定向 sandbox 注入：
 
 - `HTTP_PROXY=http://proxy:3128`
 - `HTTPS_PROXY=http://proxy:3128`
@@ -42,7 +42,7 @@
 
 ### `orchestration/`
 
-`orchestration/lib/common.sh` 提供项目根定位和 env 文件加载等通用辅助函数。`orchestration/lib/profile.sh` 负责加载所选 profile，并导出 Compose 和 sandbox 容器所需的代理环境变量。
+`orchestration/lib/common.sh` 提供项目根定位和 env 文件加载等通用辅助函数。
 
 `deploy/compose/compose.yaml` 直接声明三个稳定服务和网络：
 
@@ -52,11 +52,10 @@
 
 ## 运行流程
 
-1. `bin/agent-sandbox up <profile>` 先加载默认配置和指定 profile。
-2. profile 会决定代理环境变量是否启用，以及该模式下 MCP 和 proxy 的预期角色。
-3. `docker compose` 直接以 `deploy/compose/compose.yaml` 启动固定拓扑。
-4. sandbox 使用仓库内管理的挂载目录来承载 workspace、日志、状态和 home 数据。
-5. sandbox 的普通网络访问会根据所选 profile 直接失败或通过 Squid 转发；MCP 工具流量则走 `mcp-gateway` 的 named server 路径。
+1. `bin/agent-sandbox up` 先加载默认配置。
+2. `docker compose` 直接以 `deploy/compose/compose.yaml` 启动固定拓扑。
+3. sandbox 使用仓库内管理的挂载目录来承载 workspace、日志、状态和 home 数据。
+4. sandbox 的普通网络访问固定通过 Squid 转发；MCP 工具流量固定走 `mcp-gateway` 的 named server 路径。
 
 ## 当前范围
 

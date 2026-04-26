@@ -9,9 +9,9 @@ services:
       - ../../runtime/state:/runtime/state
       - ../../runtime/home:/home/node
     environment:
-      HTTP_PROXY: ${HTTP_PROXY:-}
-      HTTPS_PROXY: ${HTTPS_PROXY:-}
-      MCP_GITHUB_URL: http://mcp-gateway:${MCP_GATEWAY_PORT:-8080}${MCP_GITHUB_PATH:-/servers/github/mcp}
+      HTTP_PROXY: http://proxy:3128
+      HTTPS_PROXY: http://proxy:3128
+      MCP_GITHUB_URL: http://mcp-gateway:8080/servers/github/mcp
     depends_on:
       - proxy
       - mcp-gateway
@@ -35,9 +35,9 @@ services:
     environment:
       GITHUB_PERSONAL_ACCESS_TOKEN: ${GITHUB_PERSONAL_ACCESS_TOKEN:-}
       GITHUB_HOST: ${GITHUB_HOST:-}
-      GITHUB_READ_ONLY: ${GITHUB_READ_ONLY:-1}
-      GITHUB_TOOLSETS: ${GITHUB_TOOLSETS:-default}
-      GITHUB_DYNAMIC_TOOLSETS: ${GITHUB_DYNAMIC_TOOLSETS:-0}
+      GITHUB_READ_ONLY: "1"
+      GITHUB_TOOLSETS: default
+      GITHUB_DYNAMIC_TOOLSETS: "0"
     volumes:
       - ../../config/mcp-gateway/servers.json:/etc/mcp-gateway/servers.json:ro
     networks:

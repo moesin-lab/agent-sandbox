@@ -22,7 +22,7 @@
 
 - `config/`
   - 放配置源
-  - 例如默认值、运行模式、MCP gateway 配置、代理规则
+  - 例如默认值、MCP gateway 配置、代理规则
 - `deploy/compose/`
   - 放部署拓扑
   - `compose.yaml` 是唯一主入口
@@ -42,12 +42,10 @@
 - `config` 负责“应该怎样”
 - `deploy` 负责“实际怎么起”
 
-当前 `config/` 里真正会参与运行链路的只有四类文件：
+当前 `config/` 里真正会参与运行链路的只有三类文件：
 
 - `config/defaults.env`
-  - 全局默认值，例如镜像名、`COMPOSE_ROOT`、`MCP_GITHUB_PATH`
-- `config/profiles/*.env`
-  - 运行模式，例如 `mcp-only`、`proxy-gated`、`hybrid`
+  - 全局默认值，例如镜像名和 `COMPOSE_ROOT`
 - `config/mcp-gateway/servers.json`
   - `mcp-proxy` 的 named server 配置
 - `config/proxy-rules/*.txt`
@@ -63,7 +61,7 @@
 
 ## 快速开始
 
-1. 先读 `config/defaults.env` 和 `config/profiles/*.env`，确认默认镜像名、compose 根目录和运行模式符合你的机器环境。
+1. 先读 `config/defaults.env`，确认默认镜像名和 compose 根目录符合你的机器环境。
 2. 在宿主机环境里导出 GitHub PAT，例如：
 
 ```bash
@@ -71,7 +69,7 @@ export GITHUB_PERSONAL_ACCESS_TOKEN=your_token_here
 ```
 
 3. 运行 `bin/agent-sandbox doctor` 检查本地依赖和目录。
-4. 运行 `bin/agent-sandbox up hybrid` 启动默认开发模式。
+4. 运行 `bin/agent-sandbox up` 启动默认开发模式。
 
 如果你只是想确认本地结构没坏，先跑：
 
@@ -82,19 +80,14 @@ docker compose -p agent_sandbox -f deploy/compose/compose.yaml config
 
 这两步不会启动现有容器，只会做本地静态检查。
 
-## 运行模式
+## 运行形态
 
-- `mcp-only`: 默认不走通用外网，强调通过 MCP 暴露能力
-- `proxy-gated`: 通过仓库代理访问 allowlist 目标
-- `hybrid`: 同时保留代理出网和 MCP gateway
+当前只支持一种固定形态：
 
-这些模式定义在 `config/profiles/*.env`，目前主要影响：
+- `sandbox` 总是通过 `proxy` 获得普通出网能力
+- GitHub MCP 总是通过 `mcp-gateway` 暴露
 
-- 是否注入 `HTTP_PROXY` / `HTTPS_PROXY`
-- 对当前运行意图的约束表达
-- `proxy` 和 `mcp-gateway` 在这个模式下的预期角色
-
-它们现在还不会动态删除 compose 服务，所以要把它理解成“运行策略配置”，不是“完整服务编排器”。
+也就是说，这个仓库默认就是 hybrid，不再维护额外 profile。
 
 ## Compose 入口
 
@@ -145,14 +138,6 @@ GitHub 凭据不会写进 `servers.json`。当前约定是：
 bin/agent-sandbox up
 ```
 
-启动指定模式：
-
-```bash
-bin/agent-sandbox up mcp-only
-bin/agent-sandbox up proxy-gated
-bin/agent-sandbox up hybrid
-```
-
 查看日志：
 
 ```bash
@@ -195,14 +180,13 @@ docker compose -p agent_sandbox -f deploy/compose/compose.yaml config
 详细说明见：
 
 - `docs/architecture.md`
-- `docs/profiles.md`
 - `docs/security-model.md`
 - `docs/extending.md`
 - `docs/verification.md`
 
 ## 常用命令
 
-- `bin/agent-sandbox up <profile>`
+- `bin/agent-sandbox up`
 - `bin/agent-sandbox down`
 - `bin/agent-sandbox shell`
 - `bin/agent-sandbox logs`
@@ -216,8 +200,6 @@ docker compose -p agent_sandbox -f deploy/compose/compose.yaml config
 
 ## 验证脚本
 
-- `scripts/verify-mcp-only.sh`
-- `scripts/verify-proxy-gated.sh`
 - `scripts/verify-hybrid.sh`
 
 这些脚本会启动和停止本地栈。共享环境里不要直接跑。

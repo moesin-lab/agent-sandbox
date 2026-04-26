@@ -32,12 +32,12 @@ proxy 是通用出网的受控接口。它负责执行 `config/proxy-rules/` 里
 
 当前实现只覆盖了目标模型的一部分：
 
-- 启用代理的 profile 会注入 `HTTP_PROXY` 和 `HTTPS_PROXY`
+- 当前固定向 sandbox 注入 `HTTP_PROXY` 和 `HTTPS_PROXY`
 - proxy 规则会在启动时被复制进 Squid 容器
 - runtime 数据统一从仓库管理目录挂载
 - GitHub MCP 通过 `mcp-gateway` 内置的 named server 暴露在 `/servers/github/...`
 
-这个 starter kit 还不能宣称自己对所有绕过手法都具备完整隔离能力。尤其是当前 profile 选择对环境变量和操作流程的影响大于对 Compose 拓扑本身的重写。
+这个 starter kit 还不能宣称自己对所有绕过手法都具备完整隔离能力。它现在依赖固定 compose 拓扑和受控入口，而不是完整的内核级网络隔离。
 
 ## 主要针对的风险
 
@@ -48,7 +48,6 @@ proxy 是通用出网的受控接口。它负责执行 `config/proxy-rules/` 里
 
 ## 建议的使用习惯
 
-- 尽量用满足任务要求的最窄 profile
 - 新的敏感集成优先做成 MCP 服务
 - proxy allowlist 尽量保持短小且明确
 - 把验证脚本视为会修改环境的操作，因为它们会启动和停止容器

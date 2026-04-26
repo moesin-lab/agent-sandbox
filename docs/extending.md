@@ -10,17 +10,6 @@
 
 MCP 服务应该尽量窄。相比继续平铺很多容器，把多个 `stdio` server 收口在 `mcp-gateway` 的 named server 配置里，更符合这个项目当前的默认路径。
 
-## 新增运行模式
-
-1. 新建 `config/profiles/<profile>.env`。
-2. 设置 `orchestration/lib/profile.sh` 使用到的开关。
-3. 明确这个模式是否应注入代理变量。
-4. 明确这个模式里 `proxy` 和 `mcp-gateway` 的预期角色。
-5. 在 `docs/profiles.md` 里记录这个模式。
-6. 如果这个模式有值得反复验证的行为，就补一份验证脚本。
-
-当前 profile 本质上还是配置叠加层。如果新模式需要更强的服务隔离，应该同时修改 Compose 和启动逻辑，而不是只改文档说明。
-
 ## 调整代理规则
 
 需要修改的是：
@@ -37,7 +26,7 @@ MCP 服务应该尽量窄。相比继续平铺很多容器，把多个 `stdio` s
 
 ## 扩展验证
 
-`scripts/` 下的现有脚本是各 profile 的可执行验证基线。行为变化时，应该同时做这几件事：
+`scripts/` 下的现有脚本是当前固定运行形态的可执行验证基线。行为变化时，应该同时做这几件事：
 
 - 更新对应脚本
 - 更新 `docs/verification.md`

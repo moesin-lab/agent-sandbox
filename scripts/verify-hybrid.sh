@@ -21,7 +21,7 @@ cleanup() {
 
 trap cleanup EXIT
 
-"$ROOT/bin/agent-sandbox" up hybrid
+"$ROOT/bin/agent-sandbox" up
 compose exec -T sandbox command -v curl >/dev/null
 compose exec -T sandbox curl --fail --silent --show-error -I https://registry.npmjs.org >/dev/null
 compose exec -T sandbox curl --fail --silent --show-error http://mcp-gateway:8080/status >/dev/null

@@ -3,11 +3,9 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
-load_orchestration_helpers() {
+load_common_helpers() {
   # shellcheck disable=SC1091
   source "$ROOT/orchestration/lib/common.sh"
-  # shellcheck disable=SC1091
-  source "$ROOT/orchestration/lib/profile.sh"
 }
 
 compose_args() {
@@ -20,7 +18,7 @@ compose_args() {
 usage() {
   cat <<'EOF'
 Usage:
-  bin/agent-sandbox up [profile]
+  bin/agent-sandbox up
   bin/agent-sandbox down
   bin/agent-sandbox shell
   bin/agent-sandbox logs
@@ -43,27 +41,29 @@ doctor() {
 
 case "${1:-}" in
   up)
-    load_orchestration_helpers
-    profile="${2:-}"
-    load_profile "$profile"
-    compose_env
+    if [[ -n "${2:-}" ]]; then
+      printf 'bin/agent-sandbox: profiles were removed; use `bin/agent-sandbox up`\n' >&2
+      exit 1
+    fi
+    load_common_helpers
+    load_env_file "$ROOT/config/defaults.env"
     compose_args
     docker compose "${COMPOSE_ARGS[@]}" up -d
     ;;
   down)
-    load_orchestration_helpers
+    load_common_helpers
     load_env_file "$ROOT/config/defaults.env"
     compose_args
     docker compose "${COMPOSE_ARGS[@]}" down
     ;;
   shell)
-    load_orchestration_helpers
+    load_common_helpers
     load_env_file "$ROOT/config/defaults.env"
     compose_args
     docker compose "${COMPOSE_ARGS[@]}" exec sandbox zsh -i
     ;;
   logs)
-    load_orchestration_helpers
+    load_common_helpers
     load_env_file "$ROOT/config/defaults.env"
     compose_args
     docker compose "${COMPOSE_ARGS[@]}" logs --tail=50
