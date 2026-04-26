@@ -8,6 +8,20 @@
 2. 运行 `bin/agent-sandbox up hybrid`。
 3. 用 `bin/agent-sandbox doctor` 验证依赖与目录。
 
+## Profiles
+
+- `mcp-only`: 默认不走通用外网，强调通过 MCP 暴露能力
+- `proxy-gated`: 通过仓库代理访问 allowlist 目标
+- `hybrid`: 同时保留代理出网和 MCP sidecar
+
+详细说明见：
+
+- `docs/architecture.md`
+- `docs/profiles.md`
+- `docs/security-model.md`
+- `docs/extending.md`
+- `docs/verification.md`
+
 ## Commands
 
 - `bin/agent-sandbox up <profile>`
@@ -20,3 +34,9 @@
 
 - `github`: 受控敏感操作骨架
 - `web`: 受控搜索和抓取骨架
+
+## Validation Scripts
+
+- `scripts/verify-mcp-only.sh`
+- `scripts/verify-proxy-gated.sh`
+- `scripts/verify-hybrid.sh`
