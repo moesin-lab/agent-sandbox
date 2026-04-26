@@ -1,17 +1,17 @@
-# Verification
+# 验证说明
 
-## Scope
+## 范围
 
-This repository has two layers of verification:
+这个仓库的验证分成两层：
 
-- lightweight file and shell checks that are safe to run during development
-- runtime checks that bring the Docker stack up and validate each profile's expected behavior
+- 开发阶段可安全执行的轻量文件与 shell 检查
+- 拉起 Docker 栈并验证各 profile 预期行为的运行时检查
 
-If you are working in a shared or already-running environment, do not run the profile scripts blindly. They start and stop the local stack.
+如果你当前在共享环境或已经有运行中的本地栈，不要直接无脑跑这些 profile 脚本。它们会启动和停止本地服务。
 
-## Safe Local Checks
+## 安全的本地检查
 
-These checks do not start containers:
+这些检查不会启动容器：
 
 ```bash
 test -f docs/verification.md
@@ -21,39 +21,39 @@ bash -n scripts/verify-proxy-gated.sh
 bash -n scripts/verify-hybrid.sh
 ```
 
-## Profile Verification
+## 各模式验证
 
 ### `mcp-only`
 
-1. Run `bin/agent-sandbox up mcp-only`.
-2. From the sandbox, try `curl -I https://api.github.com`.
-3. Expect the request to fail.
+1. 运行 `bin/agent-sandbox up mcp-only`。
+2. 在 sandbox 内尝试 `curl -I https://api.github.com`。
+3. 预期请求失败。
 
-Script:
+对应脚本：
 
 - `scripts/verify-mcp-only.sh`
 
 ### `proxy-gated`
 
-1. Run `bin/agent-sandbox up proxy-gated`.
-2. From the sandbox, request `https://registry.npmjs.org` and expect success.
-3. From the sandbox, request `https://api.github.com` and expect failure.
+1. 运行 `bin/agent-sandbox up proxy-gated`。
+2. 在 sandbox 内访问 `https://registry.npmjs.org`，预期成功。
+3. 在 sandbox 内访问 `https://api.github.com`，预期失败。
 
-Script:
+对应脚本：
 
 - `scripts/verify-proxy-gated.sh`
 
 ### `hybrid`
 
-1. Run `bin/agent-sandbox up hybrid`.
-2. From the sandbox, request `https://registry.npmjs.org` and expect success.
-3. From the `mcp-web` container, request `http://localhost:3102/health` and expect success.
+1. 运行 `bin/agent-sandbox up hybrid`。
+2. 在 sandbox 内访问 `https://registry.npmjs.org`，预期成功。
+3. 在 sandbox 内访问 `http://mcp-web:3102/health`，预期成功。
 
-Script:
+对应脚本：
 
 - `scripts/verify-hybrid.sh`
 
-## Validation Scripts
+## 验证脚本
 
 - `scripts/verify-mcp-only.sh`
 - `scripts/verify-proxy-gated.sh`

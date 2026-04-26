@@ -8,7 +8,7 @@
 2. 运行 `bin/agent-sandbox up hybrid`。
 3. 用 `bin/agent-sandbox doctor` 验证依赖与目录。
 
-## Profiles
+## 运行模式
 
 - `mcp-only`: 默认不走通用外网，强调通过 MCP 暴露能力
 - `proxy-gated`: 通过仓库代理访问 allowlist 目标
@@ -22,7 +22,7 @@
 - `docs/extending.md`
 - `docs/verification.md`
 
-## Commands
+## 常用命令
 
 - `bin/agent-sandbox up <profile>`
 - `bin/agent-sandbox down`
@@ -30,12 +30,12 @@
 - `bin/agent-sandbox logs`
 - `bin/agent-sandbox doctor`
 
-## MCP Services
+## MCP 服务
 
 - `github`: 受控敏感操作骨架
 - `web`: 受控搜索和抓取骨架
 
-## Validation Scripts
+## 验证脚本
 
 - `scripts/verify-mcp-only.sh`
 - `scripts/verify-proxy-gated.sh`

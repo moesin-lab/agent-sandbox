@@ -1,45 +1,45 @@
-# Extending
+# 扩展指南
 
-## Add an MCP Service
+## 新增 MCP 服务
 
-1. Create a new service entry under `mcp/services/<name>/`.
-2. Expose a process entrypoint, following the current `server.js` pattern.
-3. Add the service name to the relevant MCP profile JSON in `config/mcp-profiles/`.
-4. If the new service needs its own Compose service, add it to `orchestration/compose.yaml`.
-5. Document its purpose and trust boundary in `docs/security-model.md` or a service-specific document.
+1. 在 `mcp/services/<name>/` 下创建新的服务目录。
+2. 按当前 `server.js` 的模式暴露一个进程入口。
+3. 把服务名加入对应的 `config/mcp-profiles/` JSON 配置里。
+4. 如果它需要单独的 Compose 服务，就把它补进 `orchestration/compose.yaml`。
+5. 在 `docs/security-model.md` 或服务专属文档里说明它的用途和信任边界。
 
-Keep MCP services narrow. A small, reviewable interface is better than exposing a general shell wrapper under a new name.
+MCP 服务应该尽量窄。相比重新包装一个“大而全的 shell 入口”，更小、更易审查的接口通常更合理。
 
-## Add a New Profile
+## 新增运行模式
 
-1. Create `config/profiles/<profile>.env`.
-2. Set the profile toggles used by `orchestration/lib/profile.sh`.
-3. Decide whether the profile should inject proxy variables.
-4. Decide which MCP services are intended to be available.
-5. Document the mode in `docs/profiles.md`.
-6. Add a verification script if the new mode has behavior worth checking repeatedly.
+1. 新建 `config/profiles/<profile>.env`。
+2. 设置 `orchestration/lib/profile.sh` 使用到的开关。
+3. 明确这个模式是否应注入代理变量。
+4. 明确这个模式预期应暴露哪些 MCP 服务。
+5. 在 `docs/profiles.md` 里记录这个模式。
+6. 如果这个模式有值得反复验证的行为，就补一份验证脚本。
 
-Profiles are currently configuration overlays. If a new mode requires stronger service isolation, update the Compose and launcher logic as part of the same change instead of relying on docs alone.
+当前 profile 本质上还是配置叠加层。如果新模式需要更强的服务隔离，应该同时修改 Compose 和启动逻辑，而不是只改文档说明。
 
-## Change Proxy Rules
+## 调整代理规则
 
-Edit:
+需要修改的是：
 
 - `config/proxy-rules/allowlist.txt`
 - `config/proxy-rules/blocklist.txt`
 
-Then rerun the relevant verification script to confirm:
+改完后，重新运行相关验证脚本，确认：
 
-- allowed endpoints still succeed
-- blocked endpoints still fail
+- 允许的目标仍能访问
+- 被拦截的目标仍然失败
 
-Prefer exact domains over broad wildcard thinking. The smaller the allowlist, the easier it is to reason about accidental exposure.
+尽量使用精确域名，不要一开始就放宽成大面积通配。allowlist 越小，越容易推导暴露面。
 
-## Extend Verification
+## 扩展验证
 
-The current scripts in `scripts/` are the executable baseline for profile checks. When behavior changes:
+`scripts/` 下的现有脚本是各 profile 的可执行验证基线。行为变化时，应该同时做这几件事：
 
-- update the relevant script
-- update `docs/verification.md`
-- keep the script safe to run from the repository root
-- make cleanup explicit so operators do not leave stray containers behind
+- 更新对应脚本
+- 更新 `docs/verification.md`
+- 确保脚本能从仓库根目录安全执行
+- 明确写出 cleanup，避免操作者留下残余容器

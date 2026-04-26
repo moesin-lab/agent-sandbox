@@ -1,66 +1,66 @@
-# Profiles
+# 运行模式
 
-## Overview
+## 概览
 
-Profiles are plain env files in `config/profiles/`. Each profile describes the intended operating mode for the sandbox by setting:
+Profile 就是放在 `config/profiles/` 下的普通 env 文件。每个 profile 通过以下字段描述 sandbox 的预期运行方式：
 
-- whether proxy variables are injected
-- whether MCP services are expected
-- the nominal sandbox network mode label
+- 是否注入代理环境变量
+- 是否预期存在 MCP 服务
+- sandbox 的名义网络模式标签
 
-Select a profile with:
+可以这样选择 profile：
 
 ```bash
 bin/agent-sandbox up <profile>
 ```
 
-If no profile is passed, `bin/agent-sandbox` falls back to `DEFAULT_PROFILE` from `config/defaults.env`.
+如果没有显式传入 profile，`bin/agent-sandbox` 会回退到 `config/defaults.env` 里的 `DEFAULT_PROFILE`。
 
 ## `mcp-only`
 
-File: `config/profiles/mcp-only.env`
+文件：`config/profiles/mcp-only.env`
 
-Behavior:
+行为：
 
 - `ENABLE_PROXY=0`
 - `ENABLE_MCP_GITHUB=1`
 - `ENABLE_MCP_WEB=1`
 - `SANDBOX_NETWORK_MODE=isolated`
 
-Use this mode when you want the sandbox to avoid general outbound network access and rely on MCP services for external capabilities.
+当你希望 sandbox 避免通用外网访问，而把外部能力收口到 MCP 服务时，使用这个模式。
 
 ## `proxy-gated`
 
-File: `config/profiles/proxy-gated.env`
+文件：`config/profiles/proxy-gated.env`
 
-Behavior:
+行为：
 
 - `ENABLE_PROXY=1`
 - `ENABLE_MCP_GITHUB=0`
 - `ENABLE_MCP_WEB=0`
 - `SANDBOX_NETWORK_MODE=proxy`
 
-Use this mode when ordinary package registries or docs should be reachable through the proxy allowlist, while sensitive destinations remain blocked by proxy rules.
+当你希望普通依赖源或文档站点可通过代理 allowlist 访问，同时敏感目标继续被代理规则拦截时，使用这个模式。
 
 ## `hybrid`
 
-File: `config/profiles/hybrid.env`
+文件：`config/profiles/hybrid.env`
 
-Behavior:
+行为：
 
 - `ENABLE_PROXY=1`
 - `ENABLE_MCP_GITHUB=1`
 - `ENABLE_MCP_WEB=1`
 - `SANDBOX_NETWORK_MODE=proxy`
 
-Use this mode when day-to-day development needs both proxy-gated outbound access and MCP sidecars for higher-risk actions.
+当你的日常开发既需要代理控制下的普通出网，又需要 MCP sidecar 承接高风险操作时，使用这个模式。
 
-## Practical Differences
+## 实际差异
 
-| Profile | Proxy vars in sandbox | MCP sidecars intended | Typical goal |
+| 模式 | sandbox 中是否注入代理 | 是否预期启用 MCP sidecar | 典型目标 |
 | --- | --- | --- | --- |
-| `mcp-only` | No | Yes | Force external actions through MCP |
-| `proxy-gated` | Yes | No | Allow listed egress only |
-| `hybrid` | Yes | Yes | Combine proxy convenience with MCP control |
+| `mcp-only` | 否 | 是 | 强制外部操作走 MCP |
+| `proxy-gated` | 是 | 否 | 只允许列表内出网 |
+| `hybrid` | 是 | 是 | 同时利用代理便利性和 MCP 控制 |
 
-The profile files express intent and runtime environment. They do not yet re-shape the Compose graph dynamically.
+这些 profile 文件表达的是运行意图和运行时环境，目前还不会动态重塑 Compose 服务图。
