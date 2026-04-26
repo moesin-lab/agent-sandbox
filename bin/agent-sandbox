@@ -40,21 +40,12 @@ case "${1:-}" in
     docker compose -f "$ROOT/orchestration/compose.yaml" up -d --build
     ;;
   down)
-    load_orchestration_helpers
-    load_profile "${2:-}"
-    compose_env
     docker compose -f "$ROOT/orchestration/compose.yaml" down
     ;;
   shell)
-    load_orchestration_helpers
-    load_profile "${2:-}"
-    compose_env
     docker compose -f "$ROOT/orchestration/compose.yaml" exec sandbox zsh -i
     ;;
   logs)
-    load_orchestration_helpers
-    load_profile "${2:-}"
-    compose_env
     docker compose -f "$ROOT/orchestration/compose.yaml" logs --tail=50
     ;;
   doctor) doctor ;;
