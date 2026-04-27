@@ -1,5 +1,0 @@
-registry.npmjs.org
-pypi.org
-files.pythonhosted.org
-docs.github.com
-developer.mozilla.org

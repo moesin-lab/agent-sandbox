@@ -1,205 +1,92 @@
 # Agent Containment Starter Kit
 
-一个面向 macOS + Docker Desktop 的 Agent 沙盒模板仓库。
+面向 macOS + Docker Desktop 的 Agent 沙盒模板：在容器里跑 Claude Code / Codex 等编码 Agent，把它们的网络出口收口到一个透明代理 + 一个 MCP 网关，避免直接拿 shell 撞敏感 API。
 
-## 这个项目解决什么问题
+## 它要解决什么
 
-这个仓库不是单纯把 Agent 塞进 Docker。它要解决的是更具体的问题：
+- Agent 的普通出网应该有受控出口，但又不能把开发体验搞坏
+- 敏感能力（GitHub、未来扩展）应该走显式 MCP 通道，而不是裸 `curl`
+- 新增 MCP 服务时不应该每次都改主 compose 拓扑
 
-- Agent 不应该直接拿着 shell 去访问敏感外部接口
-- 普通依赖下载和网页访问需要有受控出口
-- 新增 MCP 服务时，不应该每次都改主 `compose` 拓扑
+当前实现是固定的三服务拓扑：
 
-当前实现把系统拆成三层：
+- `sandbox`：Agent 运行舱，预装 `claude` 和 `codex`
+- `proxy`：透明 HTTP/HTTPS 代理（Squid intercept + ssl-bump peek/splice），默认放行 + blocklist 过滤
+- `mcp-gateway`：基于 `mcp-proxy` 的 MCP 平面，目前内置 `github-mcp-server`
 
-- `sandbox`：Agent 运行舱
-- `proxy`：普通出网的 allowlist/blocklist 控制层
-- `mcp-gateway`：敏感或高价值能力的受控 MCP 出口
+## 仓库结构
 
-## 仓库约定
+```
+compose.yaml             # 唯一部署拓扑，docker compose 默认查找
+bin/agent-sandbox        # up / down / shell / logs / doctor
+sandbox/                 # Agent 容器镜像
+proxy/                   # Squid 透明代理镜像
+mcp-gateway/             # MCP 网关镜像（mcp-proxy + github-mcp-server）
+config/
+  mcp-gateway/servers.json   # mcp-proxy 的 named server 配置
+  proxy-rules/blocklist.txt  # 代理黑名单
+runtime/                 # 宿主机上的运行态目录（workspace / logs / state / home）
+scripts/verify.sh        # 端到端验证脚本
+docs/                    # 架构、安全模型、扩展指南、验证说明
+```
 
-最重要的目录分工如下：
-
-- `config/`
-  - 放配置源
-  - 例如默认值、MCP gateway 配置、代理规则
-- `deploy/compose/`
-  - 放部署拓扑
-  - `compose.yaml` 是唯一主入口
-- `sandbox/`
-  - Agent 容器镜像和启动脚本
-- `proxy/`
-  - 代理镜像和 Squid 配置
-- `mcp-gateway/`
-  - MCP gateway 镜像
-  - 内置 `mcp-proxy` 和 `github-mcp-server`
-- `runtime/`
-  - 宿主机上的运行态目录
-  - 工作区、日志、状态、持久化 home 都在这里
-
-一个简单的判断标准：
-
-- `config` 负责“应该怎样”
-- `deploy` 负责“实际怎么起”
-
-当前 `config/` 里真正会参与运行链路的只有三类文件：
-
-- `config/defaults.env`
-  - 全局默认值，例如镜像名和 `COMPOSE_ROOT`
-- `config/mcp-gateway/servers.json`
-  - `mcp-proxy` 的 named server 配置
-- `config/proxy-rules/*.txt`
-  - 代理 allowlist / blocklist
-
-这里的默认结构是固定拓扑：
-
-- `sandbox`
-- `proxy`
-- `mcp-gateway`
-
-以后新增 MCP 时，优先改的是 `mcp-gateway` 镜像和 `servers.json`，不是主 `compose` 拓扑。
+镜像名等覆盖项已经在 `compose.yaml` 里以 `${VAR:-default}` 形式给出默认值，需要覆盖时在仓库根放一个 `.env`，Docker compose 会自动加载。
 
 ## 快速开始
 
-1. 先读 `config/defaults.env`，确认默认镜像名和 compose 根目录符合你的机器环境。
-2. 在宿主机环境里导出 GitHub PAT，例如：
+宿主机环境里准备好需要透传的凭据，按需导出：
 
 ```bash
-export GITHUB_PERSONAL_ACCESS_TOKEN=your_token_here
+export GITHUB_PERSONAL_ACCESS_TOKEN=...   # 给 mcp-gateway 用，sandbox 不持有
+export ANTHROPIC_API_KEY=...              # 给 sandbox 内的 claude 用，可选
+export OPENAI_API_KEY=...                 # 给 sandbox 内的 codex 用，可选
 ```
 
-3. 运行 `bin/agent-sandbox doctor` 检查本地依赖和目录。
-4. 运行 `bin/agent-sandbox up` 启动默认开发模式。
+`ANTHROPIC_API_KEY` / `OPENAI_API_KEY` 没设也行，CLI 会回退到 oauth 流程；oauth 凭据落在持久化的 `runtime/home` 卷里，下次启动复用。
 
-如果你只是想确认本地结构没坏，先跑：
+启动：
 
 ```bash
-bin/agent-sandbox doctor
-docker compose -p agent_sandbox -f deploy/compose/compose.yaml config
+bin/agent-sandbox doctor   # 静态检查依赖和目录
+bin/agent-sandbox up       # docker compose up -d
+bin/agent-sandbox shell    # 进 sandbox 容器
 ```
 
-这两步不会启动现有容器，只会做本地静态检查。
+停止：`bin/agent-sandbox down`。看日志：`bin/agent-sandbox logs`。
 
-## 运行形态
+## 网络模型
 
-当前只支持一种固定形态：
+`sandbox` 通过 `network_mode: "service:proxy"` 共享 `proxy` 容器的 network namespace，所以它**没有独立的网络栈**，所有出网包都先经过 proxy 容器内的 iptables。
 
-- `sandbox` 总是通过 `proxy` 获得普通出网能力
-- GitHub MCP 总是通过 `mcp-gateway` 暴露
+- `nat OUTPUT` 链把非 squid uid 的 80/443 流量 `REDIRECT` 到本地 squid（3128 / 3129），按 uid 把 squid 自身豁免出去
+- HTTP：squid 在 intercept 模式下用 `Host` 头匹配 dstdomain，命中 blocklist 直接 deny
+- HTTPS：squid 用 ssl-bump 在 SslBump1 peek SNI，命中 blocklist 直接 terminate；其余 splice 直通，不解密、不需要 CA
+- 其它端口（如 mcp-gateway 的 8080）不在 NAT 规则里，sandbox 直连，不经过 squid
+- 应用程序看不到代理的存在，sandbox 内不再注入 `HTTP_PROXY` / `HTTPS_PROXY`
 
-也就是说，这个仓库默认就是 hybrid，不再维护额外 profile。
+策略是**默认放行 + blocklist 过滤**：未列入 `config/proxy-rules/blocklist.txt` 的域名全部放行；默认 blocklist 里有 `api.github.com` / `uploads.github.com`，迫使 GitHub 程序化访问只能走 mcp-gateway。
 
-## Compose 入口
+## MCP 平面
 
-- 主入口：`deploy/compose/compose.yaml`
-- 当前服务固定为：
-  - `sandbox`
-  - `proxy`
-  - `mcp-gateway`
+`mcp-gateway` 容器跑 `mcp-proxy`，把 `config/mcp-gateway/servers.json` 里的 stdio server 暴露在 HTTP 路径下。当前唯一的 named server：
 
-现在不再通过 compose 片段按服务名启用 MCP。默认策略是把 MCP 能力收口到一个 `mcp-gateway` 容器里，再由 `mcp-proxy` 的 named servers 提供多路径访问。
+- `github`：路径 `http://mcp-gateway:8080/servers/github/mcp`，对应官方 `github-mcp-server stdio`
 
-原生静态检查可以直接用：
+sandbox 内通过环境变量 `MCP_GITHUB_URL` 引用这个路径。GitHub PAT 只注入 mcp-gateway，sandbox 容器不持有；`mcp-proxy` 透传环境给容器内的 `github-mcp-server`。
 
-```bash
-docker compose -p agent_sandbox -f deploy/compose/compose.yaml config
-```
+## 扩展点
 
-## GitHub MCP 路径
+- **加 MCP 服务**：把新的 stdio server 预装进 `mcp-gateway` 镜像，在 `servers.json` 里加一项 named server，路径约定 `/servers/<name>/...`。主 compose 不动。详见 [`docs/extending.md`](docs/extending.md)。
+- **改代理黑名单**：编辑 `config/proxy-rules/blocklist.txt`，跑 `scripts/verify.sh` 验证。dstdomain / SNI 都支持前导点匹配子域。
+- **透传新环境变量**：在 `compose.yaml` 的 `sandbox.environment` 列表里追加变量名（不带 `=`），Docker compose 会从 host shell 读取并透传。
 
-当前内置的 named server 只有一个：
+## 详细文档
 
-- `github`
+- [`docs/architecture.md`](docs/architecture.md)：组件分工与运行流程
+- [`docs/security-model.md`](docs/security-model.md)：信任边界、约束模型、已知盲点
+- [`docs/extending.md`](docs/extending.md)：新增 MCP / 调整代理规则 / 注入环境变量
+- [`docs/verification.md`](docs/verification.md)：本地静态检查与端到端验证脚本
 
-对 sandbox 暴露的默认路径是：
+## 验证
 
-- `http://mcp-gateway:8080/servers/github/mcp`
-
-仓库会把这个值注入到 sandbox 的 `MCP_GITHUB_URL` 环境变量里，便于在容器内统一引用。
-
-`mcp-gateway` 内部用的是：
-
-- `mcp-proxy`
-- `github/github-mcp-server`
-
-其中 `mcp-proxy` 只负责协议桥接和路径分发，普通出网仍然由独立的 `proxy` 容器负责。
-
-GitHub 凭据不会写进 `servers.json`。当前约定是：
-
-- 宿主机导出 `GITHUB_PERSONAL_ACCESS_TOKEN`
-- compose 把它只注入 `mcp-gateway`
-- `mcp-proxy` 再把环境透传给容器内的 `github-mcp-server stdio`
-
-## 常见操作
-
-启动默认模式：
-
-```bash
-bin/agent-sandbox up
-```
-
-查看日志：
-
-```bash
-bin/agent-sandbox logs
-```
-
-进入 sandbox：
-
-```bash
-bin/agent-sandbox shell
-```
-
-停止栈：
-
-```bash
-bin/agent-sandbox down
-```
-
-直接用原生 compose 展开当前部署，可以参考：
-
-```bash
-docker compose -p agent_sandbox -f deploy/compose/compose.yaml config
-```
-
-## 新增一个 MCP 服务怎么做
-
-最短路径是：
-
-1. 把新的 `stdio` MCP server 预装进 `mcp-gateway` 镜像
-2. 在 `config/mcp-gateway/servers.json` 里增加一个 named server
-3. 约定它的路径为 `/servers/<name>/...`
-4. 运行 `docker compose ... config` 或 `bin/agent-sandbox doctor` 做静态检查
-
-这样新增一个 MCP 时：
-
-- 主 `compose` 不需要修改
-- 对 sandbox 仍然只有一个稳定入口
-- 新能力通过 named server 路径扩展，而不是继续平铺容器
-
-详细说明见：
-
-- `docs/architecture.md`
-- `docs/security-model.md`
-- `docs/extending.md`
-- `docs/verification.md`
-
-## 常用命令
-
-- `bin/agent-sandbox up`
-- `bin/agent-sandbox down`
-- `bin/agent-sandbox shell`
-- `bin/agent-sandbox logs`
-- `bin/agent-sandbox doctor`
-
-## 当前内置 MCP
-
-- `github`: 通过 `mcp-gateway` 暴露在 `/servers/github/mcp`
-
-`mcp-gateway/` 当前提供的是一个真正的 bridge 容器，而不是 mock sidecar。它会把官方 `github-mcp-server stdio` 挂到 `mcp-proxy` 的 named server 路径下。
-
-## 验证脚本
-
-- `scripts/verify-hybrid.sh`
-
-这些脚本会启动和停止本地栈。共享环境里不要直接跑。
+`scripts/verify.sh` 会启动整个本地栈、对放行/阻断/MCP 链路做断言、然后清理。**它会启动和停止容器**，共享环境里别直接跑。

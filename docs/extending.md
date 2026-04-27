@@ -1,34 +1,44 @@
 # 扩展指南
 
-## 新增 MCP 服务
+## 新增一个 MCP 服务
 
-1. 把新的 `stdio` MCP server 预装进 `mcp-gateway` 镜像。
-2. 在 `config/mcp-gateway/servers.json` 里新增一个 named server。
-3. 约定它的访问路径为 `/servers/<name>/...`。
-4. 在 `docs/security-model.md` 或服务专属文档里说明它的用途、凭据边界和信任边界。
-5. 如果它需要新的环境变量或 secret，只注入 `mcp-gateway`，不要注入 `sandbox` 或普通 `proxy`。
+1. 把新的 stdio MCP server 预装进 `mcp-gateway/Dockerfile`（或基于 multi-stage `COPY --from=...` 拷过来）
+2. 在 `config/mcp-gateway/servers.json` 里新增一个 named server，约定 `command` / `args` / `transportType`
+3. 路径约定：`http://mcp-gateway:8080/servers/<name>/...`，不要让 sandbox 直接走外网到这个能力
+4. 如果服务需要新 secret，**只**注入 `mcp-gateway` 容器，不要放进 sandbox 或 proxy
+5. 在 `docs/security-model.md` 或服务专属文档里写清楚它的用途、凭据边界、信任边界
 
-MCP 服务应该尽量窄。相比继续平铺很多容器，把多个 `stdio` server 收口在 `mcp-gateway` 的 named server 配置里，更符合这个项目当前的默认路径。
+MCP 服务应该尽量窄。把多个 stdio server 收口在 mcp-gateway 的 named server 配置里，比继续在 compose 里平铺容器更符合本仓库的默认路径。
 
-## 调整代理规则
+## 调整代理黑名单
 
-需要修改的是：
+代理走默认放行 + 黑名单语义：未列入 `config/proxy-rules/blocklist.txt` 的目的，HTTP 与 HTTPS 都直接放行；列入的目的，HTTP 由 `http_access deny` 拒绝，HTTPS 在 `SslBump1` peek 到匹配 SNI 后 terminate。
 
-- `config/proxy-rules/allowlist.txt`
-- `config/proxy-rules/blocklist.txt`
+修改 `blocklist.txt` 后跑一次 `scripts/verify.sh`，确认放行链路仍然通、新加入的目的仍然失败。
 
-改完后，重新运行相关验证脚本，确认：
+Squid 的 `dstdomain` 与 `ssl::server_name` 都支持前导点匹配子域，例如 `.example.com` 同时拦截 `example.com` 和任意子域。
 
-- 允许的目标仍能访问
-- 被拦截的目标仍然失败
+## 给 sandbox 注入新的环境变量
 
-尽量使用精确域名，不要一开始就放宽成大面积通配。allowlist 越小，越容易推导暴露面。
+需要把宿主机已有的环境变量（如 Agent CLI 的 API key）穿透进 sandbox 时，在 `compose.yaml` 的 `sandbox.environment` 列表里追加变量名（不带 `=`）即可：Docker compose 会从 host shell 读取并透传，未设置的不会出现在容器里。需要给容器内固定常量则用 `KEY=value` 形式。
+
+凭据穿透的边界遵循 `docs/security-model.md`：与 GitHub 直接交互的 PAT 不进 sandbox，而是只注入 `mcp-gateway`。
+
+## 替换默认放行策略
+
+如果你的场景需要"默认拒绝"，在 `proxy/squid.conf` 里：
+
+- 加回 `acl allowed_*` 与 `http_access allow allowed_http`
+- 把 `ssl_bump splice all` 改成 `ssl_bump splice allowed_sni; ssl_bump terminate all`
+- 把 `http_access allow all` 改成 `http_access deny all`
+
+并在 `config/proxy-rules/` 下重新维护一个 `allowlist.txt`，让 `proxy/entrypoint.sh` 也把它拷进容器。
 
 ## 扩展验证
 
-`scripts/` 下的现有脚本是当前固定运行形态的可执行验证基线。行为变化时，应该同时做这几件事：
+`scripts/verify.sh` 是当前固定运行形态的可执行验证基线。行为变化时同步：
 
-- 更新对应脚本
-- 更新 `docs/verification.md`
-- 确保脚本能从仓库根目录安全执行
-- 明确写出 cleanup，避免操作者留下残余容器
+- 更新断言覆盖新行为
+- 更新 `docs/verification.md` 的预期描述
+- 保证脚本能从仓库根目录安全执行
+- 明确 cleanup（用 trap 清理容器，不留残余）

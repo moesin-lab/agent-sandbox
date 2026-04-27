@@ -1,0 +1,59 @@
+name: agent_sandbox
+
+services:
+  proxy:
+    build:
+      context: ./proxy
+    image: ${PROXY_IMAGE:-agent-sandbox-proxy:dev}
+    cap_add:
+      - NET_ADMIN
+    volumes:
+      - ./config/proxy-rules:/rules:ro
+    networks:
+      - agent_net
+      - egress_net
+
+  sandbox:
+    build:
+      context: ./sandbox
+    image: ${SANDBOX_IMAGE:-agent-sandbox:dev}
+    # Share the proxy container's network namespace so its iptables rules
+    # transparently intercept this container's outbound 80/443 traffic.
+    network_mode: "service:proxy"
+    volumes:
+      - ./runtime/workspaces:/workspace
+      - ./runtime/logs:/runtime/logs
+      - ./runtime/state:/runtime/state
+      - ./runtime/home:/home/node
+    # List entries without `=` are pulled from the host shell at compose time
+    # and left unset in the container if missing on the host. Use this for
+    # secrets the agent CLIs need (oauth tokens persist in /home/node anyway,
+    # so these env vars are only the API-key path; either works).
+    environment:
+      - MCP_GITHUB_URL=http://mcp-gateway:8080/servers/github/mcp
+      - ANTHROPIC_API_KEY
+      - OPENAI_API_KEY
+    depends_on:
+      - proxy
+      - mcp-gateway
+
+  mcp-gateway:
+    build:
+      context: ./mcp-gateway
+    image: ${MCP_GATEWAY_IMAGE:-agent-sandbox-mcp-gateway:dev}
+    environment:
+      GITHUB_PERSONAL_ACCESS_TOKEN: ${GITHUB_PERSONAL_ACCESS_TOKEN:-}
+      GITHUB_HOST: ${GITHUB_HOST:-}
+      GITHUB_READ_ONLY: "1"
+      GITHUB_TOOLSETS: default
+      GITHUB_DYNAMIC_TOOLSETS: "0"
+    volumes:
+      - ./config/mcp-gateway/servers.json:/etc/mcp-gateway/servers.json:ro
+    networks:
+      - agent_net
+      - egress_net
+
+networks:
+  agent_net:
+    internal: true
+  egress_net:

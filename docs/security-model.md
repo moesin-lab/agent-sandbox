@@ -2,52 +2,51 @@
 
 ## 目标
 
-这个仓库的设计目标是让“最安全的路径”同时也是“最顺手的路径”：
+让"最安全的路径"同时也是"最顺手的路径"：
 
-- 敏感能力应优先通过 MCP 服务暴露
-- 常规出网流量应受到仓库自带代理规则约束
-- 运行态数据应尽量留在仓库内管理的目录里
+- 敏感能力优先通过 MCP 服务暴露，而不是放任 sandbox 自己 `curl`
+- 常规出网受透明代理 + blocklist 约束
+- 运行态数据统一落在仓库管理的 `runtime/` 目录里
 
 ## 信任边界
 
-### Host
+| 边界 | 信任级别 | 持有的凭据 |
+| --- | --- | --- |
+| Host | 可信，持有源码与本地凭据 | 任意 host shell 环境变量 |
+| sandbox | 低于 host，仅可写挂载进来的 runtime 目录 | `ANTHROPIC_API_KEY`、`OPENAI_API_KEY`（可选透传），oauth 凭据落 `runtime/home` |
+| proxy | 中性，仅做出网过滤；持有 `NET_ADMIN` cap 用于 iptables | 无 |
+| mcp-gateway | 持有面向受控外部 API 的高权限凭据 | `GITHUB_PERSONAL_ACCESS_TOKEN` |
 
-宿主机负责运行 Docker，并通过 `bin/agent-sandbox` 拉起整套服务。它被视为可信边界，持有源码、本地凭据和仓库管理的运行目录。
-
-### Sandbox Container
-
-sandbox 是 Agent 运行的地方。它的信任级别应低于宿主机，所以它的可写范围被刻意收敛到挂载进来的 runtime 目录和 workspace。
-
-### MCP Services
-
-`mcp-gateway` 是敏感操作的受控接口。审计、凭据收口、请求校验、限流和 allow/deny 逻辑，都应该优先加在这里。
-
-GitHub PAT 只应注入 `mcp-gateway` 容器。`sandbox` 和普通 `proxy` 都不应持有这个凭据。
-
-### Proxy
-
-proxy 是通用出网的受控接口。它负责执行 `config/proxy-rules/` 里的 allowlist 和 blocklist。
+GitHub PAT 只注入 `mcp-gateway`。`sandbox` 与 `proxy` 都不应持有这个凭据，对 GitHub 的程序化访问只能走 mcp-gateway 暴露的 named server 路径。
 
 ## 当前约束模型
 
-当前实现只覆盖了目标模型的一部分：
+- sandbox 通过 `network_mode: "service:proxy"` 共享 proxy 的 network namespace；proxy 容器在 `nat OUTPUT` 链对 80/443 做 `REDIRECT` 到本地 Squid，应用感知不到代理存在
+- Squid 走**默认放行 + 黑名单**：未在 `blocklist.txt` 中显式列出的目的全部放行；HTTP 由 `http_access deny` 拒绝，HTTPS 在 SslBump1 peek 到匹配 SNI 后 terminate，其余 splice 直通
+- 不做 MITM，sandbox 内不需要任何 CA
+- runtime 数据统一从仓库管理目录挂载；sandbox 容器以 `node` 用户运行
+- GitHub MCP 通过 mcp-gateway 内置的 named server 暴露在 `/servers/github/...`，端口 8080 不在 NAT 规则里
+- 默认 `blocklist.txt` 列入 `api.github.com` 与 `uploads.github.com`，迫使对 GitHub 的程序化访问只能走 mcp-gateway
 
-- 当前固定向 sandbox 注入 `HTTP_PROXY` 和 `HTTPS_PROXY`
-- proxy 规则会在启动时被复制进 Squid 容器
-- runtime 数据统一从仓库管理目录挂载
-- GitHub MCP 通过 `mcp-gateway` 内置的 named server 暴露在 `/servers/github/...`
+## 已知盲点
 
-这个 starter kit 还不能宣称自己对所有绕过手法都具备完整隔离能力。它现在依赖固定 compose 拓扑和受控入口，而不是完整的内核级网络隔离。
+这套实现不能宣称对所有绕过手法都具备完整隔离能力：
+
+- **隔离强度依赖 blocklist 覆盖度**。默认放行意味着任何未列入黑名单的目的都通；需要严格收口的场景应改为 default-deny + allowlist
+- **仅 SNI 检查**。无法识别 ESNI / ECH 流量；也无法防止以 IP 直连访问敏感目标（dstdomain 失效场景）
+- **IPv6 未拦截**。当前依赖 Docker 默认网络无 IPv6；启用 IPv6 需要补 `ip6tables` 规则
+- **uid 豁免假设**。iptables 按 uid 豁免 squid 自身，假定 sandbox 内不会出现以 `proxy` uid 运行的进程
+- **build 时下载**。claude / codex 的 build 时获取通过宿主机网络，不经过本仓库的代理链路
 
 ## 主要针对的风险
 
-- sandbox 意外直连敏感 API
-- Agent 运行时里未经审视的工具蔓延
-- 运行态数据散落到随意的宿主机路径
-- 本该收口成受控能力时，Agent 仍然走“直接 `curl`”这类过宽路径
+- sandbox 意外直连 `api.github.com` 这类敏感 API
+- Agent 在 shell 里直接 `curl` 绕开本该走的 MCP 路径
+- 运行态数据散落到随意的宿主机目录
+- Agent 工具自我增殖时缺少审计入口
 
 ## 建议的使用习惯
 
-- 新的敏感集成优先做成 MCP 服务
-- proxy allowlist 尽量保持短小且明确
-- 把验证脚本视为会修改环境的操作，因为它们会启动和停止容器
+- 新的敏感集成优先做成 MCP 服务，而不是开放 proxy 出口
+- proxy blocklist 显式列出需要被收口的目的；其余视为放行
+- 视 `scripts/verify.sh` 为会修改环境的操作（启停容器）；共享环境里别直接跑

@@ -2,18 +2,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-
-load_common_helpers() {
-  # shellcheck disable=SC1091
-  source "$ROOT/orchestration/lib/common.sh"
-}
-
-compose_args() {
-  local compose_root
-  compose_root="${COMPOSE_ROOT:-deploy/compose}"
-
-  COMPOSE_ARGS=(-p "${COMPOSE_PROJECT_NAME:-agent_sandbox}" -f "$ROOT/$compose_root/compose.yaml")
-}
+COMPOSE=(docker compose -f "$ROOT/compose.yaml")
 
 usage() {
   cat <<'EOF'
@@ -29,7 +18,7 @@ EOF
 doctor() {
   command -v docker >/dev/null
   command -v jq >/dev/null
-  test -f "$ROOT/${COMPOSE_ROOT:-deploy/compose}/compose.yaml"
+  test -f "$ROOT/compose.yaml"
   test -f "$ROOT/config/mcp-gateway/servers.json"
   test -f "$ROOT/mcp-gateway/Dockerfile"
   test -d "$ROOT/runtime/workspaces"
@@ -45,29 +34,11 @@ case "${1:-}" in
       printf 'bin/agent-sandbox: profiles were removed; use `bin/agent-sandbox up`\n' >&2
       exit 1
     fi
-    load_common_helpers
-    load_env_file "$ROOT/config/defaults.env"
-    compose_args
-    docker compose "${COMPOSE_ARGS[@]}" up -d
+    "${COMPOSE[@]}" up -d
     ;;
-  down)
-    load_common_helpers
-    load_env_file "$ROOT/config/defaults.env"
-    compose_args
-    docker compose "${COMPOSE_ARGS[@]}" down
-    ;;
-  shell)
-    load_common_helpers
-    load_env_file "$ROOT/config/defaults.env"
-    compose_args
-    docker compose "${COMPOSE_ARGS[@]}" exec sandbox zsh -i
-    ;;
-  logs)
-    load_common_helpers
-    load_env_file "$ROOT/config/defaults.env"
-    compose_args
-    docker compose "${COMPOSE_ARGS[@]}" logs --tail=50
-    ;;
+  down)  "${COMPOSE[@]}" down ;;
+  shell) "${COMPOSE[@]}" exec sandbox zsh -i ;;
+  logs)  "${COMPOSE[@]}" logs --tail=50 ;;
   doctor) doctor ;;
   *) usage; exit 1 ;;
 esac

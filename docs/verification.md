@@ -2,36 +2,35 @@
 
 ## 范围
 
-这个仓库的验证分成两层：
+仓库的验证分两层：
 
-- 开发阶段可安全执行的轻量文件与 shell 检查
-- 拉起 Docker 栈并验证当前固定运行形态的运行时检查
+- **本地静态检查**：不启动容器
+- **端到端运行验证**：`scripts/verify.sh`，启停整个本地栈
 
-如果你当前在共享环境或已经有运行中的本地栈，不要直接无脑跑这些脚本。它们会启动和停止本地服务。
+如果你当前在共享环境或已经有运行中的本地栈，不要直接无脑跑这些脚本——它们会启动和停止本地服务。
 
-## 安全的本地检查
-
-这些检查不会启动容器：
+## 本地静态检查
 
 ```bash
 test -f docs/verification.md
-bash -n scripts/verify-hybrid.sh
-docker compose -p agent_sandbox -f deploy/compose/compose.yaml config
+bash -n scripts/verify.sh
+docker compose config
+bin/agent-sandbox doctor
 ```
 
-注意：`docker compose config` 会把宿主机环境变量展开到输出里。如果你已经导出了 `GITHUB_PERSONAL_ACCESS_TOKEN`，不要把这段输出贴到外部系统。
+`docker compose config` 会把宿主机环境变量展开到输出里。如果你已经导出了 `GITHUB_PERSONAL_ACCESS_TOKEN` / `ANTHROPIC_API_KEY` / `OPENAI_API_KEY`，不要把这段输出贴到外部系统。
 
-## 运行验证
+## 端到端运行验证
 
-1. 运行 `bin/agent-sandbox up`。
-2. 在 sandbox 内访问 `https://registry.npmjs.org`，预期成功。
-3. 在 sandbox 内访问 `http://mcp-gateway:8080/status`，预期成功。
-4. 读取 `MCP_GITHUB_URL`，预期默认指向 `http://mcp-gateway:8080/servers/github/mcp`。
+`scripts/verify.sh` 会做以下断言：
 
-对应脚本：
+1. `docker compose up -d` 拉起整个栈
+2. sandbox 内 `curl` 可执行（基础工具链）
+3. **放行链路**：`curl https://registry.npmjs.org` 成功（HTTPS SNI splice）
+4. **拦截链路**：`curl https://api.github.com` 失败（默认 blocklist 列入）
+5. **MCP 直连**：`curl http://mcp-gateway:8080/status` 成功（端口 8080 不在 NAT 规则）
+6. **环境变量**：`MCP_GITHUB_URL` 指向 `http://mcp-gateway:8080/servers/github/mcp`
+7. **代理透明**：sandbox 内 `HTTP_PROXY` / `HTTPS_PROXY` 都不存在
+8. `trap cleanup EXIT` 触发 `docker compose down`
 
-- `scripts/verify-hybrid.sh`
-
-## 验证脚本
-
-- `scripts/verify-hybrid.sh`
+任何一条失败脚本以非 0 退出。脚本写法假定从仓库根目录或 `scripts/` 目录调用都行，但务必在能启停容器的本地环境里执行。
