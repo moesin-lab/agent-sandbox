@@ -37,17 +37,12 @@ docs/                    # 架构、安全模型、扩展指南、验证说明
 宿主机环境里准备好需要透传的凭据，按需导出：
 
 ```bash
-# GitHub 凭据按用途分两层（推荐用两个不同的 token）：
-export GITHUB_PERSONAL_ACCESS_TOKEN=...   # 只给 mcp-gateway，做 issue/PR/org 这类高权限 API
-export GITHUB_TOKEN=...                   # 只给 sandbox 内的 git CLI clone/pull/push
-                                          # 推荐 fine-grained PAT，scope 限到具体仓库
-
-# Agent CLI 的 API key（可选，未设置走 oauth 流程）
-export ANTHROPIC_API_KEY=...
-export OPENAI_API_KEY=...
+export GITHUB_PERSONAL_ACCESS_TOKEN=...   # 给 mcp-gateway 用，sandbox 不持有
+export ANTHROPIC_API_KEY=...              # 给 sandbox 内的 claude 用，可选
+export OPENAI_API_KEY=...                 # 给 sandbox 内的 codex 用，可选
 ```
 
-`GITHUB_TOKEN` 没设的话，sandbox 内对私有仓的 `git` 操作会以匿名失败；公开仓 clone 不受影响。两个 GitHub token 填同一个值也行，那就是主动放弃这层隔离。`ANTHROPIC_API_KEY` / `OPENAI_API_KEY` 没设也行，CLI 会回退到 oauth；凭据落在持久化的 `runtime/home` 卷里，下次启动复用。
+`ANTHROPIC_API_KEY` / `OPENAI_API_KEY` 没设也行，CLI 会回退到 oauth 流程；oauth 凭据落在持久化的 `runtime/home` 卷里，下次启动复用。
 
 启动：
 

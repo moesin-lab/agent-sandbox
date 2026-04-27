@@ -1,9 +1,0 @@
-# System-level git config. Lives at /etc/gitconfig in the sandbox image so it
-# survives the runtime/home volume mount over /home/node. User-level config in
-# ~/.gitconfig still takes precedence and can override these values.
-
-[credential "https://github.com"]
-    helper = /usr/local/bin/git-credential-github-token
-
-[init]
-    defaultBranch = main
