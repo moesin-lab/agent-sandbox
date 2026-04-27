@@ -33,6 +33,10 @@ services:
       - MCP_GITHUB_URL=http://mcp-gateway:8080/servers/github/mcp
       - ANTHROPIC_API_KEY
       - OPENAI_API_KEY
+      # Used by /etc/gitconfig's credential helper for `git clone/pull/push`
+      # against github.com. Should be a separate, narrowly scoped credential
+      # from GITHUB_PERSONAL_ACCESS_TOKEN (which only goes to mcp-gateway).
+      - GITHUB_TOKEN
     depends_on:
       - proxy
       - mcp-gateway

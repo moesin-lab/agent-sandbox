@@ -13,11 +13,16 @@
 | 边界 | 信任级别 | 持有的凭据 |
 | --- | --- | --- |
 | Host | 可信，持有源码与本地凭据 | 任意 host shell 环境变量 |
-| sandbox | 低于 host，仅可写挂载进来的 runtime 目录 | `ANTHROPIC_API_KEY`、`OPENAI_API_KEY`（可选透传），oauth 凭据落 `runtime/home` |
+| sandbox | 低于 host，仅可写挂载进来的 runtime 目录 | `ANTHROPIC_API_KEY`、`OPENAI_API_KEY`（可选），`GITHUB_TOKEN`（可选，仅给 git CLI），oauth 凭据落 `runtime/home` |
 | proxy | 中性，仅做出网过滤；持有 `NET_ADMIN` cap 用于 iptables | 无 |
-| mcp-gateway | 持有面向受控外部 API 的高权限凭据 | `GITHUB_PERSONAL_ACCESS_TOKEN` |
+| mcp-gateway | 持有面向高权限 GitHub API 的凭据 | `GITHUB_PERSONAL_ACCESS_TOKEN` |
 
-GitHub PAT 只注入 `mcp-gateway`。`sandbox` 与 `proxy` 都不应持有这个凭据，对 GitHub 的程序化访问只能走 mcp-gateway 暴露的 named server 路径。
+GitHub 凭据按用途分两层：
+
+- `GITHUB_PERSONAL_ACCESS_TOKEN` → **只**注入 `mcp-gateway`，用于 GitHub REST/GraphQL 高权限操作（issue / PR / org / admin）
+- `GITHUB_TOKEN` → 注入 `sandbox`，仅供容器内 `git clone / pull / push` 使用；推荐使用 fine-grained PAT 把 scope 限到具体 repo。Sandbox 镜像里 `/etc/gitconfig` 把它挂在 `https://github.com` 前缀的 credential helper 上，自动注入
+
+两个变量可以填同一个 PAT，但那意味着主动放弃这层隔离。在 `compose.yaml` 里以无 `=` 形式列出，未设置则不进容器（git 会以匿名方式失败，触发清晰的认证错误）。
 
 ## 当前约束模型
 
@@ -26,7 +31,7 @@ GitHub PAT 只注入 `mcp-gateway`。`sandbox` 与 `proxy` 都不应持有这个
 - 不做 MITM，sandbox 内不需要任何 CA
 - runtime 数据统一从仓库管理目录挂载；sandbox 容器以 `node` 用户运行
 - GitHub MCP 通过 mcp-gateway 内置的 named server 暴露在 `/servers/github/...`，端口 8080 不在 NAT 规则里
-- 默认 `blocklist.txt` 列入 `api.github.com` 与 `uploads.github.com`，迫使对 GitHub 的程序化访问只能走 mcp-gateway
+- 默认 `blocklist.txt` 列入 `api.github.com` 与 `uploads.github.com`，迫使对 GitHub 的**程序化 API 访问**只能走 mcp-gateway。`github.com` 自身不在 blocklist 里，sandbox 内的 `git` CLI 经透明代理直连 github.com 完成 git smart-HTTPS（clone / pull / push）
 
 ## 已知盲点
 

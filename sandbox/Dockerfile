@@ -59,8 +59,10 @@ RUN set -eu; \
     echo "$expected  /opt/claude/claude" | sha256sum -c -; \
     chmod +x /opt/claude/claude
 
-COPY --chmod=755 files/entrypoint /usr/local/bin/sandbox-entrypoint
-COPY --chown=node:node files/zshrc /home/node/.zshrc
+COPY --chmod=755 files/entrypoint                    /usr/local/bin/sandbox-entrypoint
+COPY --chmod=755 files/git-credential-github-token   /usr/local/bin/git-credential-github-token
+COPY            files/gitconfig                      /etc/gitconfig
+COPY --chown=node:node files/zshrc                   /home/node/.zshrc
 
 WORKDIR /workspace
 USER node

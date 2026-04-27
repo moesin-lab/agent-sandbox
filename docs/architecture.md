@@ -24,8 +24,8 @@ Agent 的交互式运行环境。挂载点：
 
 API 凭据通过 host 环境变量透传，参考 `compose.yaml` 的 `sandbox.environment`：
 
-- `ANTHROPIC_API_KEY`、`OPENAI_API_KEY` 以无 `=` 形式列出，未设置则不进容器
-- 没设也无所谓，CLI 会走 oauth 流程，凭据落在 `runtime/home` 卷里复用
+- `ANTHROPIC_API_KEY`、`OPENAI_API_KEY` 以无 `=` 形式列出，未设置则不进容器；CLI 没拿到 key 会走 oauth 流程，凭据落在 `runtime/home` 卷里复用
+- `GITHUB_TOKEN` 同样以无 `=` 形式透传，专供容器内 `git` CLI 做 clone/pull/push 用。镜像里 `/etc/gitconfig` 把 `https://github.com` 这个 URL 前缀的 credential helper 挂到 `/usr/local/bin/git-credential-github-token`，从环境变量读取后注入 HTTP Basic Auth；这跟 mcp-gateway 持有的 `GITHUB_PERSONAL_ACCESS_TOKEN` 是分开的，建议用两个独立 PAT 维持隔离
 
 镜像里还预装 zsh + starship + 常用工具（git/curl/vim/ripgrep/fzf/jq/sudo/locale）；node 用户有 NOPASSWD sudo。容器入口除了 seed claude 二进制之外不做任何额外事情。
 
