@@ -9,6 +9,11 @@ services:
       - NET_ADMIN
     volumes:
       - ./config/proxy-rules:/rules:ro
+    # Sandbox shares this container's netns, so any port the agent listens on
+    # inside the sandbox must be published here. Default range is host-loopback
+    # only; override AGENT_SANDBOX_PUBLISH_PORTS in .env to widen or relocate.
+    ports:
+      - "${AGENT_SANDBOX_PUBLISH_PORTS:-127.0.0.1:7000-7010:7000-7010}"
     networks:
       - egress_net
       - agent_net

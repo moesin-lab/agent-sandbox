@@ -136,6 +136,20 @@ bin/sandbox                # 自动沿用最近一次启动模式；没启动会
 
 简洁模式下不会启动 `mcp-gateway`，同时也不会给 sandbox 注入 `MCP_GITHUB_URL`。注意默认 blocklist 依然会拦截直连 GitHub API；如果你连 MCP 也不用、但又想直接放开 GitHub API，需要额外调整 `config/proxy-rules/blocklist.txt`。
 
+## 暴露端口
+
+`sandbox` 共享 `proxy` 的 netns，所以容器内任何监听端口都得在 `proxy` 上 publish。默认在 `compose.yaml` / `compose.simple.yaml` 给 proxy 开了 `127.0.0.1:7000-7010:7000-7010`，仅 host loopback 可见，给 sandbox 内 dev server 一段预留区。
+
+要改范围或换端口，在 `.env` 里覆盖：
+
+```env
+AGENT_SANDBOX_PUBLISH_PORTS=127.0.0.1:8080:8080            # 单端口
+AGENT_SANDBOX_PUBLISH_PORTS=127.0.0.1:7000-7020:7000-7020  # 更宽范围
+AGENT_SANDBOX_PUBLISH_PORTS=0.0.0.0:7000-7010:7000-7010    # 暴露到 LAN
+```
+
+Docker 没有"运行中容器实时加端口"的 API。改了 `AGENT_SANDBOX_PUBLISH_PORTS` 必须 `bin/agent-sandbox down && bin/agent-sandbox up` 重新创建 proxy 容器才生效——这点跟其它配置型 .env 旋钮不一样。
+
 ## MCP 平面
 
 默认模式下，`mcp-gateway` 容器跑 `mcp-proxy`，把 `config/mcp-gateway/servers.json` 里的 stdio server 暴露在 HTTP 路径下。当前唯一的 named server：
