@@ -125,6 +125,12 @@ export XDG_DATA_HOME=${XDG_DATA_HOME:-/state/xdg/data}
 export XDG_STATE_HOME=${XDG_STATE_HOME:-/state/xdg/state}
 export XDG_CACHE_HOME=${XDG_CACHE_HOME:-/cache/xdg}
 export XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-/tmp/xdg-runtime}
+# Re-assert tool-bin paths after /etc/profile may have reset PATH on
+# login shells (Debian /etc/profile hardcodes a default PATH for non-root).
+for p in /usr/local/share/npm-global/bin /tool-bin/user/npm-global/bin /tool-bin/user/bin; do
+    case ":$PATH:" in *":$p:"*) ;; *) PATH="$p:$PATH" ;; esac
+done
+export PATH
 [ -f /state/shell/zshenv.local ] && . /state/shell/zshenv.local
 EOF
 
@@ -134,6 +140,10 @@ export XDG_DATA_HOME=${XDG_DATA_HOME:-/state/xdg/data}
 export XDG_STATE_HOME=${XDG_STATE_HOME:-/state/xdg/state}
 export XDG_CACHE_HOME=${XDG_CACHE_HOME:-/cache/xdg}
 export XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-/tmp/xdg-runtime}
+for p in /usr/local/share/npm-global/bin /tool-bin/user/npm-global/bin /tool-bin/user/bin; do
+    case ":$PATH:" in *":$p:"*) ;; *) PATH="$p:$PATH" ;; esac
+done
+export PATH
 [ -f /state/shell/profile.local ] && . /state/shell/profile.local
 EOF
 
