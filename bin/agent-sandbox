@@ -152,7 +152,9 @@ start_mode() {
     prereqs+=(mcp-gateway)
   fi
   compose_cmd "$mode" up -d "${prereqs[@]}"
-  wait_for_service "$mode" proxy
+  for svc in "${prereqs[@]}"; do
+    wait_for_service "$mode" "$svc"
+  done
   compose_cmd "$mode" up -d --no-deps sandbox
   printf '%s\n' "$mode" > "$MODE_FILE"
 }

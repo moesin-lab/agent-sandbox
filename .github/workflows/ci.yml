@@ -83,8 +83,20 @@ jobs:
       - name: Run scripts/verify.sh
         run: scripts/verify.sh
 
-      - name: Dump container logs on failure
+      - name: Dump diagnostics on failure
         if: failure()
         run: |
-          docker compose -f compose.yaml ps || true
-          docker compose -f compose.yaml logs --tail=200 || true
+          set +e
+          echo '--- docker compose ps -a ---'
+          docker compose -f compose.yaml ps -a
+          echo '--- docker compose logs (tail) ---'
+          docker compose -f compose.yaml logs --tail=300
+          echo '--- docker network ls ---'
+          docker network ls
+          echo '--- proxy iptables nat ---'
+          docker compose -f compose.yaml exec -T proxy iptables -t nat -L -n -v
+          echo '--- sandbox /etc/resolv.conf ---'
+          docker compose -f compose.yaml exec -T sandbox cat /etc/resolv.conf
+          echo '--- sandbox nslookup mcp-gateway ---'
+          docker compose -f compose.yaml exec -T sandbox getent hosts mcp-gateway
+          docker compose -f compose.yaml exec -T sandbox sh -c 'command -v nslookup && nslookup mcp-gateway || true'
