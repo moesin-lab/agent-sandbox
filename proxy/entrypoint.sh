@@ -33,8 +33,11 @@ cp /rules/blocklist.txt /etc/squid/blocklist.txt
 # Transparent NAT: redirect outbound 80/443 from non-squid uids to local squid.
 # The sandbox container shares this netns via `network_mode: "service:proxy"`,
 # so its packets enter the OUTPUT chain in this container.
-iptables -t nat -F OUTPUT
-iptables -t nat -A OUTPUT -p tcp --dport 80  -m owner ! --uid-owner proxy -j REDIRECT --to-ports 3128
-iptables -t nat -A OUTPUT -p tcp --dport 443 -m owner ! --uid-owner proxy -j REDIRECT --to-ports 3129
+iptables -t nat -N AGENT_SANDBOX_REDIRECT 2>/dev/null || true
+iptables -t nat -F AGENT_SANDBOX_REDIRECT
+while iptables -t nat -D OUTPUT -j AGENT_SANDBOX_REDIRECT 2>/dev/null; do :; done
+iptables -t nat -A AGENT_SANDBOX_REDIRECT -p tcp --dport 80  -m owner ! --uid-owner proxy -j REDIRECT --to-ports 3128
+iptables -t nat -A AGENT_SANDBOX_REDIRECT -p tcp --dport 443 -m owner ! --uid-owner proxy -j REDIRECT --to-ports 3129
+iptables -t nat -A OUTPUT -j AGENT_SANDBOX_REDIRECT
 
 exec squid -N -f /etc/squid/squid.conf

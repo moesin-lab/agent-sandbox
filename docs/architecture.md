@@ -18,21 +18,29 @@
 Agent 的交互式运行环境。挂载点：
 
 - `runtime/workspaces` → `/workspace`（项目代码）
-- `runtime/home` → `/home/node`（持久化用户家目录，包含 oauth 凭据、shell 历史、`~/.local/bin`）
-- `runtime/logs` → `/runtime/logs`
-- `runtime/state` → `/runtime/state`
+- `runtime/state` → `/state`（oauth、session、sqlite、小数据库、普通配置）
+- `runtime/logs` → `/logs`
+- `runtime/tool-bin` → `/tool-bin`（运行时下载的可执行物，高风险入口）
+- tmpfs → `/cache`（可重建缓存，重启即丢）
+
+`/home/node` 是 tmpfs，不再作为整体持久化单元。容器入口每次启动时在 home 中生成 symlink 视图：
+
+- 规矩应用通过 `XDG_CONFIG_HOME=/state/xdg/config`、`XDG_DATA_HOME=/state/xdg/data`、`XDG_STATE_HOME=/state/xdg/state`、`XDG_CACHE_HOME=/cache/xdg` 收口
+- 常见 home 子路径如 `~/.config`、`~/.cache`、`~/.local/share`、`~/.local/state` 被 symlink 到对应 XDG 根
+- `~/.claude`、`~/.codex`、`~/.ssh`、`~/.gitconfig` 等兼容路径指向 `/state` 下的稳定位置
+- shell rc/profile 由镜像层每次生成，不从 `/state` 自动 source
 
 镜像内预装的 Agent CLI：
 
-- `claude`：容器入口在启动时检查 `$HOME/.local/bin/claude`；如果缺失，就运行 `/usr/local/bin/install-claude` 在线下载、按 `manifest.json` 校验 SHA256，然后写入持久化的 `runtime/home/.local/bin`。这样 claude 落在上游约定位置，后续启动直接复用；需要 pin 版本时可设置 `CLAUDE_RELEASE_TAG`。
+- `claude`：镜像层提供 `/usr/local/bin/claude` wrapper。首次执行时 wrapper 调用 `/usr/local/bin/install-claude`，在线下载并按官方 `manifest.json` 校验 SHA256，然后写入 `/tool-bin/claude`。`/tool-bin` 不在默认 `PATH` 中，后续执行仍通过镜像层 wrapper 进入；需要 pin 版本时可设置 `CLAUDE_RELEASE_TAG`。
 - `codex`：通过 `npm install -g @openai/codex` 装在 `/usr/local/share/npm-global/bin`（`NPM_CONFIG_PREFIX` 控制路径），镜像层即可用。
 
 API 凭据通过 host 环境变量透传，参考 `compose.yaml` 的 `sandbox.environment`：
 
 - `ANTHROPIC_API_KEY`、`OPENAI_API_KEY` 以无 `=` 形式列出，未设置则不进容器
-- 没设也无所谓，CLI 会走 oauth 流程，凭据落在 `runtime/home` 卷里复用
+- 没设也无所谓，CLI 会走 oauth 流程，凭据落在 `/state` 对应目录里复用
 
-镜像里还预装 zsh + starship + 常用工具（git/curl/vim/ripgrep/fzf/jq/sudo/locale）；node 用户有 NOPASSWD sudo。容器入口只做持久化 home 的首次初始化：自动安装 claude、补默认 `.zshrc`，然后再 exec 到主命令。
+镜像里还预装 zsh + starship + 常用工具（git/curl/vim/ripgrep/fzf/jq/sudo/locale）。passwordless sudo 默认关闭。容器根文件系统默认只读，只有 `/workspace`、`/state`、`/cache`、`/logs`、`/tool-bin` 和 tmpfs 目录可写。
 
 ### `proxy/`
 
@@ -73,7 +81,7 @@ sandbox 服务没有自己的 `networks` 块，因为 `network_mode: "service:pr
 
 1. `bin/agent-sandbox up` 启动默认模式；`bin/agent-sandbox up simple` 启动简洁模式。
 2. proxy 启动脚本生成自签 cert、初始化 ssl_db、装好 iptables NAT 规则、exec 到 squid。
-3. sandbox 容器入口在首次启动时把 `claude` 安装到持久化 home，并补齐默认 `.zshrc`，然后 exec 到 zsh（或 compose 指定的命令）。
+3. sandbox 容器入口在 tmpfs home 中生成 XDG/symlink 视图和默认 shell 启动文件，然后 exec 到 zsh（或 compose 指定的命令）。
 4. sandbox 内 80/443 流量被 proxy 容器的 iptables 透明重定向到 squid；默认模式下，其它端口（含 mcp-gateway:8080）直连。
 5. 只有默认模式会注入 `MCP_GITHUB_URL`，MCP 工具调用再经 `mcp-gateway` 由 `mcp-proxy` 转 stdio。
 

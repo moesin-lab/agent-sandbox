@@ -1,9 +1,13 @@
 eval "$(starship init zsh)"
 
-HISTFILE=$HOME/.zsh_history
+HISTFILE=${XDG_STATE_HOME:-/state/xdg/state}/zsh_history
 HISTSIZE=10000
 SAVEHIST=10000
 setopt SHARE_HISTORY HIST_IGNORE_DUPS HIST_REDUCE_BLANKS
 
 alias ll='ls -lAh'
 alias la='ls -A'
+
+# Persistent executable downloads live in /tool-bin for auditability, but that
+# directory is intentionally not added to PATH. Use image-provided wrappers
+# such as /usr/local/bin/claude for tools that need a runtime binary.

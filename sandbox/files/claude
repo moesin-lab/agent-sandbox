@@ -1,0 +1,23 @@
+#!/bin/sh
+set -eu
+
+tool_dir="${AGENT_SANDBOX_TOOL_BIN:-/tool-bin}"
+tool="$tool_dir/claude"
+sum="$tool.sha256"
+
+if [ ! -x "$tool" ]; then
+    /usr/local/bin/install-claude
+fi
+
+if [ -f "$sum" ]; then
+    if ! sha256sum -c "$sum" >/dev/null 2>&1; then
+        printf 'claude: checksum mismatch for %s; reinstalling\n' "$tool" >&2
+        /usr/local/bin/install-claude --force
+        sha256sum -c "$sum" >/dev/null
+    fi
+else
+    printf 'claude: checksum metadata missing for %s; reinstalling\n' "$tool" >&2
+    /usr/local/bin/install-claude --force
+fi
+
+exec "$tool" "$@"

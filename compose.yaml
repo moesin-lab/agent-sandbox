@@ -10,8 +10,8 @@ services:
     volumes:
       - ./config/proxy-rules:/rules:ro
     networks:
-      - agent_net
       - egress_net
+      - agent_net
 
   sandbox:
     build:
@@ -23,6 +23,7 @@ services:
     init: true
     security_opt:
       - no-new-privileges:${AGENT_SANDBOX_NO_NEW_PRIVILEGES:-true}
+    read_only: ${AGENT_SANDBOX_READ_ONLY_ROOT:-true}
     cap_drop:
       - ALL
     pids_limit: ${SANDBOX_PIDS_LIMIT:-512}
@@ -33,18 +34,25 @@ services:
     network_mode: "service:proxy"
     volumes:
       - ${AGENT_SANDBOX_WORKSPACE_DIR:-./runtime/workspaces}:${AGENT_SANDBOX_WORKSPACE_TARGET:-/workspace}:${AGENT_SANDBOX_WORKSPACE_MODE:-rw}
-      - ${AGENT_SANDBOX_LOGS_DIR:-./runtime/logs}:/runtime/logs
-      - ${AGENT_SANDBOX_STATE_DIR:-./runtime/state}:/runtime/state
-      - ${AGENT_SANDBOX_HOME_DIR:-./runtime/home}:/home/node
+      - ${AGENT_SANDBOX_STATE_DIR:-./runtime/state}:/state
+      - ${AGENT_SANDBOX_LOGS_DIR:-./runtime/logs}:/logs
+      - ${AGENT_SANDBOX_TOOL_BIN_DIR:-./runtime/tool-bin}:/tool-bin
+    tmpfs:
+      - /home/node:rw,nosuid,nodev,uid=1000,gid=1000,mode=700,size=${AGENT_SANDBOX_HOME_TMPFS_SIZE:-64m}
+      - /cache:rw,nosuid,nodev,uid=1000,gid=1000,mode=700,size=${AGENT_SANDBOX_CACHE_SIZE:-1g}
+      - /tmp:rw,nosuid,nodev,noexec,size=${AGENT_SANDBOX_TMP_SIZE:-512m}
+      - /run:rw,nosuid,nodev,size=${AGENT_SANDBOX_RUN_SIZE:-64m}
+      - /var/tmp:rw,nosuid,nodev,noexec,size=${AGENT_SANDBOX_TMP_SIZE:-512m}
     # List entries without `=` are pulled from the host shell at compose time
     # and left unset in the container if missing on the host. Use this for
-    # secrets the agent CLIs need (oauth tokens persist in /home/node anyway,
+    # secrets the agent CLIs need (oauth tokens persist under /state anyway,
     # so these env vars are only the API-key path; either works).
     environment:
       - MCP_GITHUB_URL=http://mcp-gateway:8080/servers/github/mcp
       - ANTHROPIC_API_KEY
       - CLAUDE_RELEASE_TAG
       - OPENAI_API_KEY
+      - AGENT_SANDBOX_ENTRYPOINT_LINKS
     depends_on:
       - proxy
       - mcp-gateway
@@ -66,8 +74,8 @@ services:
     volumes:
       - ./config/mcp-gateway/servers.json:/etc/mcp-gateway/servers.json:ro
     networks:
-      - agent_net
       - egress_net
+      - agent_net
 
 networks:
   agent_net:

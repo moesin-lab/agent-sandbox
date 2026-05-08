@@ -6,8 +6,10 @@ if [ "${1:-}" = "--force" ]; then
     FORCE=1
 fi
 
-DEST_DIR="$HOME/.local/bin"
+DEST_DIR="${AGENT_SANDBOX_TOOL_BIN:-/tool-bin}"
 DEST="$DEST_DIR/claude"
+SUM="$DEST.sha256"
+VERSION_FILE="$DEST.version"
 
 if [ "$FORCE" -ne 1 ] && [ -x "$DEST" ]; then
     exit 0
@@ -53,3 +55,5 @@ curl -fsSL "$base/$version/$plat/claude" -o "$tmp"
 printf '%s  %s\n' "$expected" "$tmp" | sha256sum -c - >/dev/null
 chmod 0755 "$tmp"
 mv "$tmp" "$DEST"
+printf '%s  %s\n' "$expected" "$DEST" > "$SUM"
+printf '%s\n' "$version" > "$VERSION_FILE"

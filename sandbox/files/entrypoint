@@ -1,21 +1,132 @@
 #!/bin/sh
 # Sandbox container init.
 #
-# /home/node is a bind mount onto the host's runtime/home directory, so anything
-# baked into /home/node at build time is hidden at runtime. Tools that the
-# upstream installer expects to live at $HOME/.local/bin (Claude Code) are
-# installed into the persistent home directory on first container start.
+# /home/node is an ephemeral tmpfs. Persistent data is exposed through a small
+# set of semantic mounts (/state, /cache, /logs, /tool-bin) and projected into
+# the home directory with symlinks. Shell startup files are regenerated from the
+# image on each start so persisted state cannot silently become startup code.
 
 set -e
 
-if [ ! -x "$HOME/.local/bin/claude" ]; then
-    if ! /usr/local/bin/install-claude; then
-        echo "sandbox-entrypoint: warning: failed to install claude into \$HOME/.local/bin" >&2
+STATE_DIR="${AGENT_SANDBOX_STATE_DIR:-/state}"
+CACHE_DIR="${XDG_CACHE_HOME:-/cache/xdg}"
+TOOL_BIN="${AGENT_SANDBOX_TOOL_BIN:-/tool-bin}"
+RUNTIME_DIR="${XDG_RUNTIME_DIR:-/tmp/xdg-runtime}"
+
+mkdir -p \
+    "$STATE_DIR/claude" \
+    "$STATE_DIR/codex" \
+    "$STATE_DIR/entrypoints/claude" \
+    "$STATE_DIR/git" \
+    "$STATE_DIR/memsearch" \
+    "$STATE_DIR/shell" \
+    "$STATE_DIR/ssh" \
+    "$STATE_DIR/xdg/config" \
+    "$STATE_DIR/xdg/data" \
+    "$STATE_DIR/xdg/state" \
+    "/cache/claude" \
+    "$CACHE_DIR" \
+    "/cache/npm" \
+    "/cache/pnpm-store" \
+    "$TOOL_BIN" \
+    "$RUNTIME_DIR" \
+    "$HOME/.local" \
+    "/logs"
+
+chmod 700 "$RUNTIME_DIR" "$STATE_DIR/ssh" 2>/dev/null || true
+
+link_path() {
+    target="$1"
+    link="$2"
+    rm -rf "$link"
+    ln -s "$target" "$link"
+}
+
+link_path "$STATE_DIR/claude" "$HOME/.claude"
+link_path "$STATE_DIR/claude.json" "$HOME/.claude.json"
+link_path "$STATE_DIR/codex" "$HOME/.codex"
+link_path "$STATE_DIR/git/gitconfig" "$HOME/.gitconfig"
+link_path "$STATE_DIR/git/gitignore_global" "$HOME/.gitignore_global"
+link_path "$STATE_DIR/memsearch" "$HOME/.memsearch"
+link_path "$STATE_DIR/ssh" "$HOME/.ssh"
+link_path "$STATE_DIR/xdg/config" "$HOME/.config"
+link_path "$CACHE_DIR" "$HOME/.cache"
+link_path "/cache/npm" "$HOME/.npm"
+link_path "/cache/pnpm-store" "$HOME/.pnpm-store"
+mkdir -p "$HOME/.local/bin"
+link_path "$STATE_DIR/xdg/data" "$HOME/.local/share"
+link_path "$STATE_DIR/xdg/state" "$HOME/.local/state"
+link_path "$STATE_DIR/shell/zsh_history" "$HOME/.zsh_history"
+link_path "$STATE_DIR/shell/bash_history" "$HOME/.bash_history"
+
+apply_entrypoint_link() {
+    spec="$1"
+    home_rel="${spec%%=*}"
+    entry_rel="${spec#*=}"
+
+    if [ -z "$home_rel" ] || [ -z "$entry_rel" ]; then
+        echo "sandbox-entrypoint: warning: rejected empty entrypoint link '$spec'" >&2
+        return
     fi
+
+    case "$home_rel:$entry_rel" in
+        *..*|/*:*|*:/*)
+            echo "sandbox-entrypoint: warning: rejected unsafe entrypoint link '$spec'" >&2
+            return
+            ;;
+    esac
+
+    case "$home_rel" in
+        .zshrc|.zshenv|.profile|.bashrc|.bash_profile|.local/bin|.local/bin/*)
+            echo "sandbox-entrypoint: warning: rejected startup/PATH entrypoint link '$spec'" >&2
+            return
+            ;;
+    esac
+
+    target="$STATE_DIR/entrypoints/$entry_rel"
+    link="$HOME/$home_rel"
+    mkdir -p "$target" "$(dirname "$link")"
+    link_dir="$(readlink -f "$(dirname "$link")")"
+    target_link="$(realpath --relative-to="$link_dir" "$target" 2>/dev/null || printf '%s\n' "$target")"
+    rm -rf "$link"
+    ln -s "$target_link" "$link"
+}
+
+DEFAULT_ENTRYPOINT_LINKS=".claude/agents=claude/agents .claude/bin=claude/bin .claude/commands=claude/commands .claude/hooks=claude/hooks .claude/scripts=claude/scripts .claude/skills=claude/skills"
+for spec in $DEFAULT_ENTRYPOINT_LINKS ${AGENT_SANDBOX_ENTRYPOINT_LINKS:-}; do
+    apply_entrypoint_link "$spec"
+done
+
+if [ ! -e "$STATE_DIR/claude/cache" ] && [ ! -L "$STATE_DIR/claude/cache" ]; then
+    ln -s "/cache/claude" "$STATE_DIR/claude/cache"
 fi
 
-if [ -f /etc/agent-sandbox/zshrc ] && [ ! -f "$HOME/.zshrc" ]; then
+if [ ! -e "$STATE_DIR/claude/statusline-command.sh" ] && [ ! -L "$STATE_DIR/claude/statusline-command.sh" ]; then
+    ln -s "../entrypoints/claude/statusline-command.sh" "$STATE_DIR/claude/statusline-command.sh"
+fi
+
+if [ -f /etc/agent-sandbox/zshrc ]; then
     cp /etc/agent-sandbox/zshrc "$HOME/.zshrc"
 fi
+
+cat > "$HOME/.zshenv" <<'EOF'
+export XDG_CONFIG_HOME=${XDG_CONFIG_HOME:-/state/xdg/config}
+export XDG_DATA_HOME=${XDG_DATA_HOME:-/state/xdg/data}
+export XDG_STATE_HOME=${XDG_STATE_HOME:-/state/xdg/state}
+export XDG_CACHE_HOME=${XDG_CACHE_HOME:-/cache/xdg}
+export XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-/tmp/xdg-runtime}
+EOF
+
+cat > "$HOME/.profile" <<'EOF'
+export XDG_CONFIG_HOME=${XDG_CONFIG_HOME:-/state/xdg/config}
+export XDG_DATA_HOME=${XDG_DATA_HOME:-/state/xdg/data}
+export XDG_STATE_HOME=${XDG_STATE_HOME:-/state/xdg/state}
+export XDG_CACHE_HOME=${XDG_CACHE_HOME:-/cache/xdg}
+export XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-/tmp/xdg-runtime}
+EOF
+
+cat > "$HOME/.bashrc" <<'EOF'
+export HISTFILE=${XDG_STATE_HOME:-/state/xdg/state}/bash_history
+EOF
 
 exec "$@"

@@ -74,9 +74,9 @@ doctor() {
   test -f "$ROOT/config/mcp-gateway/servers.json"
   test -f "$ROOT/mcp-gateway/Dockerfile"
   test -d "$ROOT/runtime/workspaces"
-  test -d "$ROOT/runtime/home"
   test -d "$ROOT/runtime/logs"
   test -d "$ROOT/runtime/state"
+  test -d "$ROOT/runtime/tool-bin"
   echo "doctor: ok"
 }
 

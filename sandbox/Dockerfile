@@ -31,7 +31,8 @@ RUN if [ "$ENABLE_PASSWORDLESS_SUDO" = "1" ]; then \
 
 # npm global prefix that the node user can write to.
 RUN mkdir -p /usr/local/share/npm-global \
-    && chown -R node:node /usr/local/share/npm-global
+    && mkdir -p /cache/npm \
+    && chown -R node:node /usr/local/share/npm-global /cache
 
 ENV TZ=America/Los_Angeles
 RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
@@ -41,11 +42,19 @@ ENV LANG=en_US.UTF-8 \
     EDITOR=vim \
     SHELL=/bin/zsh \
     NPM_CONFIG_PREFIX=/usr/local/share/npm-global \
-    AGENT_SANDBOX_RUNTIME=/runtime \
-    PATH=/workspace/bin:/usr/local/share/npm-global/bin:/home/node/.local/bin:$PATH
+    AGENT_SANDBOX_RUNTIME=/state \
+    AGENT_SANDBOX_TOOL_BIN=/tool-bin \
+    XDG_CONFIG_HOME=/state/xdg/config \
+    XDG_DATA_HOME=/state/xdg/data \
+    XDG_STATE_HOME=/state/xdg/state \
+    XDG_CACHE_HOME=/cache/xdg \
+    XDG_RUNTIME_DIR=/tmp/xdg-runtime \
+    NPM_CONFIG_CACHE=/cache/npm \
+    PATH=/usr/local/share/npm-global/bin:/usr/local/bin:/usr/bin:/bin
 
 COPY --chmod=755 files/entrypoint /usr/local/bin/sandbox-entrypoint
 COPY --chmod=755 files/install-claude /usr/local/bin/install-claude
+COPY --chmod=755 files/claude /usr/local/bin/claude
 COPY --chmod=644 files/zshrc /etc/agent-sandbox/zshrc
 
 WORKDIR /workspace

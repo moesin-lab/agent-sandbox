@@ -2,9 +2,11 @@ runtime/workspaces/*
 runtime/home/*
 runtime/logs/*
 runtime/state/*
+runtime/tool-bin/*
 !runtime/workspaces/.gitkeep
 !runtime/home/.gitkeep
 !runtime/logs/.gitkeep
 !runtime/state/.gitkeep
+!runtime/tool-bin/.gitkeep
 .env
 *.log

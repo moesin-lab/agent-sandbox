@@ -31,6 +31,9 @@ bin/agent-sandbox doctor
 5. **MCP 直连**：`curl http://mcp-gateway:8080/status` 成功（端口 8080 不在 NAT 规则）
 6. **环境变量**：`MCP_GITHUB_URL` 指向 `http://mcp-gateway:8080/servers/github/mcp`
 7. **代理透明**：sandbox 内 `HTTP_PROXY` / `HTTPS_PROXY` 都不存在
-8. `trap cleanup EXIT` 触发 `docker compose down`
+8. **持久化边界**：`/home/node` 是 tmpfs，根文件系统是只读挂载，XDG 指向 `/state`/`/cache`
+9. **执行入口收口**：`PATH` 不包含 `/tool-bin`、`~/.local/bin` 或 `/workspace/bin`
+10. **写路径**：`/state`、`/cache`、`/logs`、`/tool-bin` 可写，常见 home 子路径是 symlink
+11. `trap cleanup EXIT` 触发 `docker compose down`
 
 任何一条失败脚本以非 0 退出。脚本写法假定从仓库根目录或 `scripts/` 目录调用都行，但务必在能启停容器的本地环境里执行。
