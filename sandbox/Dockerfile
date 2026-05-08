@@ -54,6 +54,11 @@ ENV LANG=en_US.UTF-8 \
     NPM_CONFIG_CACHE=/cache/npm \
     PATH=/tool-bin/user/bin:/tool-bin/user/npm-global/bin:/usr/local/share/npm-global/bin:/usr/local/bin:/usr/bin:/bin
 
+# BuildKit's COPY --chmod applies the file mode to implicitly created parent
+# directories too, which strips execute (search) bits and silently breaks
+# non-root reads of files under /etc/agent-sandbox. Create the dir explicitly.
+RUN install -d -m 0755 /etc/agent-sandbox
+
 COPY --chmod=755 files/entrypoint /usr/local/bin/sandbox-entrypoint
 COPY --chmod=755 files/install-claude /usr/local/bin/install-claude
 COPY --chmod=755 files/claude /usr/local/bin/claude
