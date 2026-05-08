@@ -2,7 +2,12 @@
 
 ## 概览
 
-仓库提供一个固定的三服务拓扑：`sandbox`、`proxy`、`mcp-gateway`。顶层入口 `bin/agent-sandbox` 直接调用仓库根的 `compose.yaml`，没有 profile 切换、没有可拼装的 compose 片段。
+仓库提供两套启动拓扑：
+
+- 默认模式：`sandbox`、`proxy`、`mcp-gateway`
+- 简洁模式：`sandbox`、`proxy`
+
+顶层入口 `bin/agent-sandbox` 负责在 `compose.yaml` 和 `compose.simple.yaml` 之间切换；最近一次启动模式会写入 `runtime/state/compose-mode`，供 `shell` / `logs` / `down` 复用。`bin/sandbox` 是它的短入口，专门用于直接进入容器终端。
 
 镜像名、compose 项目名等覆盖项已经在 `compose.yaml` 里通过 `${VAR:-default}` 给出默认值；需要覆盖时在仓库根放一个 `.env`，Docker compose 会自动加载。
 
@@ -19,7 +24,7 @@ Agent 的交互式运行环境。挂载点：
 
 镜像内预装的 Agent CLI：
 
-- `claude`：build 时按 `manifest.json` 校验 SHA256 后下载到 `/opt/claude/claude`（不在 PATH）。容器入口 `sandbox-entrypoint` 在每次启动时检查，如果 `$HOME/.local/bin/claude` 不存在就 seed 一份过去——这样 claude 落在上游约定位置 `~/.local/bin`，由 `runtime/home` 卷持久化，self-update 写回原位置；镜像层不污染 PATH，运行时也不需要联网。
+- `claude`：容器入口在启动时检查 `$HOME/.local/bin/claude`；如果缺失，就运行 `/usr/local/bin/install-claude` 在线下载、按 `manifest.json` 校验 SHA256，然后写入持久化的 `runtime/home/.local/bin`。这样 claude 落在上游约定位置，后续启动直接复用；需要 pin 版本时可设置 `CLAUDE_RELEASE_TAG`。
 - `codex`：通过 `npm install -g @openai/codex` 装在 `/usr/local/share/npm-global/bin`（`NPM_CONFIG_PREFIX` 控制路径），镜像层即可用。
 
 API 凭据通过 host 环境变量透传，参考 `compose.yaml` 的 `sandbox.environment`：
@@ -27,7 +32,7 @@ API 凭据通过 host 环境变量透传，参考 `compose.yaml` 的 `sandbox.en
 - `ANTHROPIC_API_KEY`、`OPENAI_API_KEY` 以无 `=` 形式列出，未设置则不进容器
 - 没设也无所谓，CLI 会走 oauth 流程，凭据落在 `runtime/home` 卷里复用
 
-镜像里还预装 zsh + starship + 常用工具（git/curl/vim/ripgrep/fzf/jq/sudo/locale）；node 用户有 NOPASSWD sudo。容器入口除了 seed claude 二进制之外不做任何额外事情。
+镜像里还预装 zsh + starship + 常用工具（git/curl/vim/ripgrep/fzf/jq/sudo/locale）；node 用户有 NOPASSWD sudo。容器入口只做持久化 home 的首次初始化：自动安装 claude、补默认 `.zshrc`，然后再 exec 到主命令。
 
 ### `proxy/`
 
@@ -53,23 +58,25 @@ MCP 平面的统一入口。镜像里聚合：
 
 mcp-gateway 不参与透明代理链路，端口 8080 不在 NAT 规则里，sandbox 通过容器名直连。
 
-### `compose.yaml`
+### `compose.yaml` 与 `compose.simple.yaml`
 
-仓库根的 `compose.yaml` 声明三个稳定服务和两条网络：
+仓库根有两份 compose 文件，共用相同的服务定义风格和网络模型：
 
-- `agent_net`（internal=true）：sandbox / proxy / mcp-gateway 内部互通
-- `egress_net`：proxy 和 mcp-gateway 用来对外联网；sandbox 不直接挂
+- `compose.yaml`：默认模式，包含 `sandbox` / `proxy` / `mcp-gateway`
+- `compose.simple.yaml`：简洁模式，只包含 `sandbox` / `proxy`
+- `agent_net`（internal=true）：内部互通网络
+- `egress_net`：`proxy` 与默认模式下的 `mcp-gateway` 对外联网；sandbox 不直接挂
 
 sandbox 服务没有自己的 `networks` 块，因为 `network_mode: "service:proxy"` 已经把它绑到 proxy 的 netns 上。
 
 ## 运行流程
 
-1. `bin/agent-sandbox up` 调用 `docker compose -f compose.yaml up -d`，三个容器并行起来（sandbox `depends_on` proxy 与 mcp-gateway）。
+1. `bin/agent-sandbox up` 启动默认模式；`bin/agent-sandbox up simple` 启动简洁模式。
 2. proxy 启动脚本生成自签 cert、初始化 ssl_db、装好 iptables NAT 规则、exec 到 squid。
-3. sandbox 容器入口 seed 一次 claude 二进制，然后 exec 到 zsh（或 compose 指定的命令）。
-4. sandbox 内 80/443 流量被 proxy 容器的 iptables 透明重定向到 squid；其它端口（含 mcp-gateway:8080）直连。
-5. MCP 工具调用走 `MCP_GITHUB_URL` 指向的 named server 路径，进 mcp-gateway 后由 mcp-proxy 转 stdio。
+3. sandbox 容器入口在首次启动时把 `claude` 安装到持久化 home，并补齐默认 `.zshrc`，然后 exec 到 zsh（或 compose 指定的命令）。
+4. sandbox 内 80/443 流量被 proxy 容器的 iptables 透明重定向到 squid；默认模式下，其它端口（含 mcp-gateway:8080）直连。
+5. 只有默认模式会注入 `MCP_GITHUB_URL`，MCP 工具调用再经 `mcp-gateway` 由 `mcp-proxy` 转 stdio。
 
 ## 当前范围
 
-刻意停留在 starter kit：单一固定拓扑、单一默认运行模式。新增 MCP 走"扩 mcp-gateway 镜像 + 加 named server"路径，不膨胀 compose 服务图。隔离强度由 `blocklist.txt` 覆盖度决定，需要更严的场景应改为 default-deny 并扩 allowlist。
+当前仍刻意停留在 starter kit：只保留默认模式和一个不带 MCP 的简洁模式，不再引入更细粒度的 compose 拼装。新增 MCP 走"扩 mcp-gateway 镜像 + 加 named server"路径。隔离强度由 `blocklist.txt` 覆盖度决定，需要更严的场景应改为 default-deny 并扩 allowlist。

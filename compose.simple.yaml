@@ -41,33 +41,11 @@ services:
     # secrets the agent CLIs need (oauth tokens persist in /home/node anyway,
     # so these env vars are only the API-key path; either works).
     environment:
-      - MCP_GITHUB_URL=http://mcp-gateway:8080/servers/github/mcp
       - ANTHROPIC_API_KEY
       - CLAUDE_RELEASE_TAG
       - OPENAI_API_KEY
     depends_on:
       - proxy
-      - mcp-gateway
-
-  mcp-gateway:
-    build:
-      context: ./mcp-gateway
-    image: ${MCP_GATEWAY_IMAGE:-agent-sandbox-mcp-gateway:dev}
-    security_opt:
-      - no-new-privileges:true
-    cap_drop:
-      - ALL
-    environment:
-      GITHUB_PERSONAL_ACCESS_TOKEN: ${GITHUB_PERSONAL_ACCESS_TOKEN:-}
-      GITHUB_HOST: ${GITHUB_HOST:-}
-      GITHUB_READ_ONLY: "1"
-      GITHUB_TOOLSETS: default
-      GITHUB_DYNAMIC_TOOLSETS: "0"
-    volumes:
-      - ./config/mcp-gateway/servers.json:/etc/mcp-gateway/servers.json:ro
-    networks:
-      - agent_net
-      - egress_net
 
 networks:
   agent_net:

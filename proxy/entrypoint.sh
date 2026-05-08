@@ -3,6 +3,8 @@ set -euo pipefail
 
 CERT_DIR=/etc/squid/ssl
 SSL_DB=/var/cache/squid/ssl_db
+SSL_DB_PARENT="$(dirname "$SSL_DB")"
+LOG_DIR=/var/log/squid
 
 # Self-signed cert for ssl-bump's peek phase. We never present this to clients
 # (splice = TCP passthrough), so it does not need to be trusted anywhere.
@@ -16,10 +18,15 @@ if [[ ! -f "$CERT_DIR/bump.pem" ]]; then
 fi
 
 # security_file_certgen needs an initialized state dir even when we only splice.
+mkdir -p "$SSL_DB_PARENT"
+chown proxy:proxy "$SSL_DB_PARENT"
 if [[ ! -d "$SSL_DB" ]]; then
   /usr/lib/squid/security_file_certgen -c -s "$SSL_DB" -M 4MB
   chown -R proxy:proxy "$SSL_DB"
 fi
+
+mkdir -p "$LOG_DIR"
+chown proxy:proxy "$LOG_DIR"
 
 cp /rules/blocklist.txt /etc/squid/blocklist.txt
 

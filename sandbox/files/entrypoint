@@ -4,14 +4,18 @@
 # /home/node is a bind mount onto the host's runtime/home directory, so anything
 # baked into /home/node at build time is hidden at runtime. Tools that the
 # upstream installer expects to live at $HOME/.local/bin (Claude Code) are
-# baked into /opt at build time and seeded into the persistent home directory
-# on first container start.
+# installed into the persistent home directory on first container start.
 
 set -e
 
-if [ -x /opt/claude/claude ] && [ ! -x "$HOME/.local/bin/claude" ]; then
-    mkdir -p "$HOME/.local/bin"
-    cp /opt/claude/claude "$HOME/.local/bin/claude"
+if [ ! -x "$HOME/.local/bin/claude" ]; then
+    if ! /usr/local/bin/install-claude; then
+        echo "sandbox-entrypoint: warning: failed to install claude into \$HOME/.local/bin" >&2
+    fi
+fi
+
+if [ -f /etc/agent-sandbox/zshrc ] && [ ! -f "$HOME/.zshrc" ]; then
+    cp /etc/agent-sandbox/zshrc "$HOME/.zshrc"
 fi
 
 exec "$@"

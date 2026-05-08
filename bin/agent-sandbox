@@ -2,23 +2,75 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-COMPOSE=(docker compose -f "$ROOT/compose.yaml")
+MODE_FILE="$ROOT/runtime/state/compose-mode"
 
 usage() {
   cat <<'EOF'
 Usage:
-  bin/agent-sandbox up
-  bin/agent-sandbox down
-  bin/agent-sandbox shell
-  bin/agent-sandbox logs
+  bin/agent-sandbox up [default|simple]
+  bin/agent-sandbox down [default|simple]
+  bin/agent-sandbox shell [default|simple]
+  bin/agent-sandbox logs [default|simple]
   bin/agent-sandbox doctor
 EOF
+}
+
+mode_path() {
+  case "${1:-default}" in
+    default|full|'')
+      printf '%s\n' "$ROOT/compose.yaml"
+      ;;
+    simple|lite|minimal)
+      printf '%s\n' "$ROOT/compose.simple.yaml"
+      ;;
+    *)
+      printf 'bin/agent-sandbox: unknown mode `%s` (expected `default` or `simple`)\n' "$1" >&2
+      exit 1
+      ;;
+  esac
+}
+
+mode_name() {
+  case "${1:-default}" in
+    default|full|'') printf 'default\n' ;;
+    simple|lite|minimal) printf 'simple\n' ;;
+    *)
+      printf 'bin/agent-sandbox: unknown mode `%s` (expected `default` or `simple`)\n' "$1" >&2
+      exit 1
+      ;;
+  esac
+}
+
+resolve_mode() {
+  local explicit="${1:-}"
+  if [[ -n "$explicit" ]]; then
+    mode_name "$explicit"
+    return
+  fi
+  if [[ -f "$MODE_FILE" ]]; then
+    local persisted
+    persisted="$(tr -d '[:space:]' < "$MODE_FILE")"
+    if [[ -n "$persisted" ]]; then
+      mode_name "$persisted"
+      return
+    fi
+  fi
+  printf 'default\n'
+}
+
+compose_cmd() {
+  local mode="$1"
+  shift
+  local compose_file
+  compose_file="$(mode_path "$mode")"
+  docker compose -f "$compose_file" "$@"
 }
 
 doctor() {
   command -v docker >/dev/null
   command -v jq >/dev/null
   test -f "$ROOT/compose.yaml"
+  test -f "$ROOT/compose.simple.yaml"
   test -f "$ROOT/config/mcp-gateway/servers.json"
   test -f "$ROOT/mcp-gateway/Dockerfile"
   test -d "$ROOT/runtime/workspaces"
@@ -28,17 +80,70 @@ doctor() {
   echo "doctor: ok"
 }
 
+service_running() {
+  local mode="$1" service="$2"
+  local cid status
+  cid="$(compose_cmd "$mode" ps -q "$service" 2>/dev/null || true)"
+  if [[ -z "$cid" ]]; then
+    return 1
+  fi
+  status="$(docker inspect -f '{{.State.Status}}' "$cid" 2>/dev/null || true)"
+  [[ "$status" == "running" ]]
+}
+
+wait_for_service() {
+  local mode="$1" service="$2"
+  local attempts=30
+  local i
+  for ((i = 0; i < attempts; i++)); do
+    if service_running "$mode" "$service"; then
+      return 0
+    fi
+    sleep 1
+  done
+  printf 'bin/agent-sandbox: service `%s` failed to reach running state\n' "$service" >&2
+  return 1
+}
+
+start_mode() {
+  local mode="$1"
+  local prereqs=(proxy)
+  if [[ "$mode" == "default" ]]; then
+    prereqs+=(mcp-gateway)
+  fi
+  compose_cmd "$mode" up -d "${prereqs[@]}"
+  wait_for_service "$mode" proxy
+  compose_cmd "$mode" up -d --no-deps sandbox
+  printf '%s\n' "$mode" > "$MODE_FILE"
+}
+
+ensure_sandbox_running() {
+  local mode="$1"
+  if service_running "$mode" sandbox; then
+    return
+  fi
+  start_mode "$mode"
+}
+
 case "${1:-}" in
   up)
-    if [[ -n "${2:-}" ]]; then
-      printf 'bin/agent-sandbox: profiles were removed; use `bin/agent-sandbox up`\n' >&2
-      exit 1
-    fi
-    "${COMPOSE[@]}" up -d
+    mode="$(resolve_mode "${2:-}")"
+    start_mode "$mode"
     ;;
-  down)  "${COMPOSE[@]}" down ;;
-  shell) "${COMPOSE[@]}" exec sandbox zsh -i ;;
-  logs)  "${COMPOSE[@]}" logs --tail=50 ;;
+  down)
+    mode="$(resolve_mode "${2:-}")"
+    compose_cmd "$mode" down
+    rm -f "$MODE_FILE"
+    ;;
+  shell)
+    mode="$(resolve_mode "${2:-}")"
+    ensure_sandbox_running "$mode"
+    compose_cmd "$mode" exec sandbox zsh -i
+    ;;
+  logs)
+    mode="$(resolve_mode "${2:-}")"
+    compose_cmd "$mode" logs --tail=50
+    ;;
   doctor) doctor ;;
   *) usage; exit 1 ;;
 esac

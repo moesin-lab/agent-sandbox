@@ -24,7 +24,7 @@ GitHub PAT 只注入 `mcp-gateway`。`sandbox` 与 `proxy` 都不应持有这个
 - sandbox 通过 `network_mode: "service:proxy"` 共享 proxy 的 network namespace；proxy 容器在 `nat OUTPUT` 链对 80/443 做 `REDIRECT` 到本地 Squid，应用感知不到代理存在
 - Squid 走**默认放行 + 黑名单**：未在 `blocklist.txt` 中显式列出的目的全部放行；HTTP 由 `http_access deny` 拒绝，HTTPS 在 SslBump1 peek 到匹配 SNI 后 terminate，其余 splice 直通
 - 不做 MITM，sandbox 内不需要任何 CA
-- runtime 数据统一从仓库管理目录挂载；sandbox 容器以 `node` 用户运行
+- runtime 数据默认从仓库管理目录挂载，也可以用 `.env` 将 workspace/home/logs/state 指向自定义 host 路径；sandbox 容器以 `node` 用户运行，默认关闭 passwordless sudo，并启用 `no-new-privileges`、`cap_drop: ALL`、PID/CPU/内存上限
 - GitHub MCP 通过 mcp-gateway 内置的 named server 暴露在 `/servers/github/...`，端口 8080 不在 NAT 规则里
 - 默认 `blocklist.txt` 列入 `api.github.com` 与 `uploads.github.com`，迫使对 GitHub 的程序化访问只能走 mcp-gateway
 
@@ -36,7 +36,9 @@ GitHub PAT 只注入 `mcp-gateway`。`sandbox` 与 `proxy` 都不应持有这个
 - **仅 SNI 检查**。无法识别 ESNI / ECH 流量；也无法防止以 IP 直连访问敏感目标（dstdomain 失效场景）
 - **IPv6 未拦截**。当前依赖 Docker 默认网络无 IPv6；启用 IPv6 需要补 `ip6tables` 规则
 - **uid 豁免假设**。iptables 按 uid 豁免 squid 自身，假定 sandbox 内不会出现以 `proxy` uid 运行的进程
-- **build 时下载**。claude / codex 的 build 时获取通过宿主机网络，不经过本仓库的代理链路
+- **挂载路径即信任入口**。自定义 workspace/home/logs/state 路径会暴露给 sandbox 读写；不要把 host 的密钥目录、浏览器资料、云凭据目录或 Docker socket 放进这些路径。
+- **sudo 可被显式打开**。`ENABLE_PASSWORDLESS_SUDO=1` 且 `AGENT_SANDBOX_NO_NEW_PRIVILEGES=false` 适合可信开发会话，但会让 agent 能升到容器 root；跑陌生代码时应保持默认关闭。
+- **镜像构建仍会直接出网**。`codex`、系统包和其它 build 依赖的获取仍通过宿主机网络，不经过本仓库的代理链路；`claude` 已改为运行时首次安装，因此会经过 proxy 的透明代理链路。
 
 ## 主要针对的风险
 

@@ -12,10 +12,4 @@ RUN if [ -f "/usr/share/zoneinfo/$TZ" ]; then \
     fi
 
 ENTRYPOINT ["catatonit", "--", "mcp-proxy"]
-CMD [
-  "--host=0.0.0.0",
-  "--port=8080",
-  "--pass-environment",
-  "--named-server-config",
-  "/etc/mcp-gateway/servers.json"
-]
+CMD ["--host=0.0.0.0", "--port=8080", "--pass-environment", "--named-server-config", "/etc/mcp-gateway/servers.json"]
