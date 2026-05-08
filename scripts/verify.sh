@@ -64,4 +64,18 @@ fi
 "${COMPOSE[@]}" exec -T sandbox sh -lc 'test "$NPM_CONFIG_PREFIX" = "/tool-bin/user/npm-global"'
 "${COMPOSE[@]}" exec -T sandbox sh -lc 'test -L "$HOME/.claude" && test -L "$HOME/.cache" && test -d "$HOME/.local/bin" && test ! -L "$HOME/.local/bin"'
 
+# Persistence扩展点结构性检查：env-loader + shell rc local 钩子已就位。
+"${COMPOSE[@]}" exec -T sandbox sh -lc 'test -r /state/env.local && test -r /etc/agent-sandbox/env-loader.sh'
+"${COMPOSE[@]}" exec -T sandbox sh -lc 'grep -q env-loader.sh /home/node/.zshenv && grep -q env-loader.sh /home/node/.profile && grep -q env-loader.sh /home/node/.bashrc'
+"${COMPOSE[@]}" exec -T sandbox sh -lc 'grep -q "/state/shell/zshenv.local" /home/node/.zshenv && grep -q "/state/shell/profile.local" /home/node/.profile && grep -q "/state/shell/bashrc.local" /home/node/.bashrc'
+
+# /state/env.local 行为性 round-trip：写一行 sentinel，新 login shell 应该 export 出来；测完清理。
+"${COMPOSE[@]}" exec -T sandbox sh -lc '
+  set -e
+  echo SB_VERIFY_X=ok >> /state/env.local
+  out=$(sh -lc "printf %s \$SB_VERIFY_X")
+  sed -i "/^SB_VERIFY_X=/d" /state/env.local
+  test "$out" = ok
+'
+
 echo "verify: ok"

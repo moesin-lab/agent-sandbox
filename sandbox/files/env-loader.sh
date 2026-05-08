@@ -4,7 +4,18 @@
 # command substitution. Keys protecting the execution chain are rejected.
 
 if [ -r /state/env.local ]; then
+    __sb_cr=$(printf '\r')
+    __sb_tab=$(printf '\t')
     while IFS= read -r __sb_line || [ -n "$__sb_line" ]; do
+        # Tolerate CRLF line endings (Windows / cross-edit).
+        __sb_line=${__sb_line%"$__sb_cr"}
+        # Trim leading spaces / tabs on the whole line.
+        while :; do
+            case "$__sb_line" in
+                ' '*|"$__sb_tab"*) __sb_line=${__sb_line#?} ;;
+                *) break ;;
+            esac
+        done
         case "$__sb_line" in
             ''|\#*) continue ;;
             *=*) ;;
@@ -15,6 +26,14 @@ if [ -r /state/env.local ]; then
         esac
         __sb_name=${__sb_line%%=*}
         __sb_value=${__sb_line#*=}
+        # Trim trailing spaces / tabs on name (so `FOO =bar` works); leave
+        # value untouched — trailing whitespace there is the user's data.
+        while :; do
+            case "$__sb_name" in
+                *' '|*"$__sb_tab") __sb_name=${__sb_name%?} ;;
+                *) break ;;
+            esac
+        done
         case "$__sb_name" in
             ''|*[!A-Za-z0-9_]*|[0-9]*)
                 printf 'env-loader: invalid name: %s\n' "$__sb_name" >&2
@@ -27,5 +46,5 @@ if [ -r /state/env.local ]; then
         esac
         export "$__sb_name=$__sb_value"
     done < /state/env.local
-    unset __sb_line __sb_name __sb_value
+    unset __sb_line __sb_name __sb_value __sb_cr __sb_tab
 fi
