@@ -69,11 +69,16 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Align runtime/ ownership with container uid 1000
+      - name: Align runtime/ ownership and perms for both runner and container
         # Host bind mounts inherit the runner user (uid 1001); the sandbox
         # container runs as uid 1000 with read_only root, so its entrypoint
         # cannot mkdir into /state, /logs, /tool-bin without this chown.
-        run: sudo chown -R 1000:1000 runtime/
+        # Chmod a+rwX afterwards so the host-side runner (still uid 1001) can
+        # also write runtime/state/compose-mode, which bin/agent-sandbox does
+        # from the host during `up`.
+        run: |
+          sudo chown -R 1000:1000 runtime/
+          sudo chmod -R a+rwX runtime/
 
       - name: Run scripts/verify.sh
         run: scripts/verify.sh
