@@ -66,6 +66,44 @@ compose_cmd() {
   docker compose -f "$compose_file" "$@"
 }
 
+SANDBOX_UID=1000
+
+dir_uid() {
+  # GNU stat first (Linux), then BSD stat (macOS).
+  stat -c %u "$1" 2>/dev/null || stat -f %u "$1" 2>/dev/null
+}
+
+# The sandbox container runs as uid 1000 with read_only root. On Linux hosts
+# whose user uid is not 1000 (e.g. CI runners, multi-user dev boxes), bind
+# mounts inherit the host uid and the entrypoint cannot mkdir into /state etc.,
+# so the container exits immediately. Docker Desktop on macOS hides this with
+# its own uid translation, so we skip the check there.
+check_runtime_perms() {
+  if [[ "$(uname -s)" != "Linux" ]]; then
+    return 0
+  fi
+  local dir owner_uid bad=0
+  for dir in workspaces state logs tool-bin; do
+    local target="${AGENT_SANDBOX_RUNTIME_OVERRIDE:-$ROOT/runtime/$dir}"
+    [[ -d "$target" ]] || continue
+    owner_uid="$(dir_uid "$target")"
+    if [[ -n "$owner_uid" && "$owner_uid" != "$SANDBOX_UID" ]]; then
+      bad=1
+      printf 'bin/agent-sandbox: %s owned by uid %s (expected %s)\n' \
+        "$target" "$owner_uid" "$SANDBOX_UID" >&2
+    fi
+  done
+  if [[ "$bad" == 1 ]]; then
+    cat >&2 <<EOF
+bin/agent-sandbox: sandbox container runs as uid $SANDBOX_UID; mismatched
+  bind-mount ownership will make the entrypoint fail to mkdir into /state and
+  the container will exit on start. Fix:
+    sudo chown -R $SANDBOX_UID:$SANDBOX_UID "$ROOT/runtime"
+EOF
+    return 1
+  fi
+}
+
 doctor() {
   command -v docker >/dev/null
   command -v jq >/dev/null
@@ -77,6 +115,7 @@ doctor() {
   test -d "$ROOT/runtime/logs"
   test -d "$ROOT/runtime/state"
   test -d "$ROOT/runtime/tool-bin"
+  check_runtime_perms
   echo "doctor: ok"
 }
 
@@ -107,6 +146,7 @@ wait_for_service() {
 
 start_mode() {
   local mode="$1"
+  check_runtime_perms
   local prereqs=(proxy)
   if [[ "$mode" == "default" ]]; then
     prereqs+=(mcp-gateway)
