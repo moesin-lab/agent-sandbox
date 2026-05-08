@@ -5,6 +5,22 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 COMPOSE=(docker compose -f "$ROOT/compose.yaml")
 
 cleanup() {
+  local rc=$?
+  if [[ "$rc" -ne 0 ]]; then
+    echo "verify: failure (rc=$rc), dumping diagnostics before teardown" >&2
+    {
+      echo '--- docker compose ps -a ---'
+      "${COMPOSE[@]}" ps -a
+      echo '--- docker compose logs (tail=300) ---'
+      "${COMPOSE[@]}" logs --tail=300
+      echo '--- proxy iptables nat ---'
+      "${COMPOSE[@]}" exec -T proxy iptables -t nat -L -n -v 2>&1
+      echo '--- sandbox /etc/resolv.conf ---'
+      "${COMPOSE[@]}" exec -T sandbox cat /etc/resolv.conf 2>&1
+      echo '--- sandbox getent hosts mcp-gateway ---'
+      "${COMPOSE[@]}" exec -T sandbox getent hosts mcp-gateway 2>&1
+    } || true
+  fi
   "${COMPOSE[@]}" down >/dev/null 2>&1 || true
 }
 
