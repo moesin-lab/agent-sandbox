@@ -46,7 +46,7 @@ docs/                    # 架构、安全模型、扩展指南、验证说明
 | `./runtime/tool-bin` | `/tool-bin` | 可持久化可执行物：`managed/`（wrapper 下载，不在 PATH）+ `user/`（npm 全局、用户安装的二进制，**在** PATH） |
 | tmpfs | `/cache` | 可重建缓存，重启即丢 |
 
-`/home/node` 不再是持久化挂载，而是 tmpfs。容器启动时 entrypoint 会用 XDG 环境变量和 symlink 把常见 home 子路径导向 `/state` 或 `/cache`，每次从镜像生成 shell 启动骨架，并在末尾 source `/state/shell/*.local` 作为持久化扩展点。详见 [`docs/persistence.md`](docs/persistence.md)。
+`/home/node` 不再是持久化挂载，而是 tmpfs。容器启动时 entrypoint 会用 XDG 环境变量和 symlink 把常见 home 子路径导向 `/state` 或 `/cache`，每次从镜像生成 shell 启动骨架，并在末尾 source `/state/shell/*.local`（持久化 shell 自定义）和 `/state/env.local`（持久化 `KEY=value` 环境变量）作为不需 rebuild 即可生效的扩展点。详见 [`docs/persistence.md`](docs/persistence.md)。
 
 要把工作目录换到别的位置，在 `.env` 里设置：
 

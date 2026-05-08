@@ -54,6 +54,7 @@ entrypoint 会在 tmpfs `/home/node` 中创建固定 symlink：
 - `/tool-bin/managed`：镜像 wrapper 下载的二进制。**不在** `PATH`，只能通过 `/usr/local/bin/<wrapper>` 显式调用。
 - `/tool-bin/user/bin`、`/tool-bin/user/npm-global/bin`：用户/agent 主动安装的可执行物。**在** `PATH`，下次 shell 启动会自动可见，等同执行链。
 - `/state/shell/*.local`（`zshrc.local`、`zshenv.local`、`bashrc.local`、`profile.local`）：shell 启动骨架末尾会 source 这些文件，等同 `~/.zshrc`。如果不需要可持久化的 shell 自定义，宿主机侧把它们删掉即可。
+- `/state/env.local`：每行 `KEY=value` 的持久化环境变量；shell 启动时由 `/etc/agent-sandbox/env-loader.sh` 解析并 export。值不做 shell 求值（`$VAR` / `$(cmd)` 原样保留），保留键 `PATH`、`HOME`、`SHELL`、`USER`、`UID`、`LOGNAME`、`PWD`、`OLDPWD` 直接拒绝以保护执行链。Agent 在容器内 `echo OPENAI_BASE_URL=https://... >> /state/env.local` 即可持久化新变量。
 - `/state/entrypoints/claude`：Claude hooks、commands、skills、agents、scripts、statusline 等入口。
 - `/state/git/gitconfig`：Git alias、include、hooksPath 等配置可能改变命令行为。
 

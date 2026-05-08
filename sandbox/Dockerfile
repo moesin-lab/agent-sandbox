@@ -58,6 +58,7 @@ COPY --chmod=755 files/entrypoint /usr/local/bin/sandbox-entrypoint
 COPY --chmod=755 files/install-claude /usr/local/bin/install-claude
 COPY --chmod=755 files/claude /usr/local/bin/claude
 COPY --chmod=644 files/zshrc /etc/agent-sandbox/zshrc
+COPY --chmod=644 files/env-loader.sh /etc/agent-sandbox/env-loader.sh
 
 WORKDIR /workspace
 USER node

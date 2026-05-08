@@ -111,6 +111,17 @@ if [ ! -e "$STATE_DIR/claude/cache" ] && [ ! -L "$STATE_DIR/claude/cache" ]; the
     ln -s "/cache/claude" "$STATE_DIR/claude/cache"
 fi
 
+if [ ! -e "$STATE_DIR/env.local" ]; then
+    cat > "$STATE_DIR/env.local" <<'EOF'
+# Persistent env vars for sandbox shell sessions.
+# Format: one KEY=value per line. Blank lines and lines starting with # are ignored.
+# Values are NOT shell-expanded — `$FOO` and `$(cmd)` are stored literally.
+# Keys protecting the execution chain are rejected by the loader:
+#   PATH, HOME, SHELL, USER, UID, LOGNAME, PWD, OLDPWD
+# Loaded by ~/.zshenv, ~/.profile, ~/.bashrc via /etc/agent-sandbox/env-loader.sh.
+EOF
+fi
+
 if [ ! -e "$STATE_DIR/claude/statusline-command.sh" ] && [ ! -L "$STATE_DIR/claude/statusline-command.sh" ]; then
     ln -s "../entrypoints/claude/statusline-command.sh" "$STATE_DIR/claude/statusline-command.sh"
 fi
@@ -131,6 +142,7 @@ for p in /usr/local/share/npm-global/bin /tool-bin/user/npm-global/bin /tool-bin
     case ":$PATH:" in *":$p:"*) ;; *) PATH="$p:$PATH" ;; esac
 done
 export PATH
+[ -r /etc/agent-sandbox/env-loader.sh ] && . /etc/agent-sandbox/env-loader.sh
 [ -f /state/shell/zshenv.local ] && . /state/shell/zshenv.local
 EOF
 
@@ -144,11 +156,13 @@ for p in /usr/local/share/npm-global/bin /tool-bin/user/npm-global/bin /tool-bin
     case ":$PATH:" in *":$p:"*) ;; *) PATH="$p:$PATH" ;; esac
 done
 export PATH
+[ -r /etc/agent-sandbox/env-loader.sh ] && . /etc/agent-sandbox/env-loader.sh
 [ -f /state/shell/profile.local ] && . /state/shell/profile.local
 EOF
 
 cat > "$HOME/.bashrc" <<'EOF'
 export HISTFILE=${XDG_STATE_HOME:-/state/xdg/state}/bash_history
+[ -r /etc/agent-sandbox/env-loader.sh ] && . /etc/agent-sandbox/env-loader.sh
 [ -f /state/shell/bashrc.local ] && . /state/shell/bashrc.local
 EOF
 
