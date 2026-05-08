@@ -81,6 +81,11 @@ jobs:
           sudo chmod -R a+rwX runtime/
 
       - name: Run scripts/verify.sh
+        # github-mcp-server 启动期硬校验 GITHUB_PERSONAL_ACCESS_TOKEN 非空，
+        # 否则进程直接退出、连带 mcp-proxy 无法完成 MCP initialize 握手。
+        # CI 不打 GitHub API，给一个占位字符串就够 mcp-gateway 起来通过 /status。
+        env:
+          GITHUB_PERSONAL_ACCESS_TOKEN: ci_placeholder_not_used_for_api
         run: scripts/verify.sh
 
       # verify.sh 自己在 trap cleanup 里负责 down 前 dump 诊断，这里不再重复。
