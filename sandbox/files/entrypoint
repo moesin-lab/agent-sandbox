@@ -66,8 +66,10 @@ link_path "/cache/pnpm-store" "$HOME/.pnpm-store"
 mkdir -p "$HOME/.local/bin"
 link_path "$STATE_DIR/xdg/data" "$HOME/.local/share"
 link_path "$STATE_DIR/xdg/state" "$HOME/.local/state"
-link_path "$STATE_DIR/shell/zsh_history" "$HOME/.zsh_history"
-link_path "$STATE_DIR/shell/bash_history" "$HOME/.bash_history"
+# zsh/bash history is persisted via HISTFILE pointing at $XDG_STATE_HOME
+# (/state/xdg/state/...). Don't symlink ~/.zsh_history / ~/.bash_history —
+# they would be dead links since HISTFILE wins and confuse anyone reading
+# the home directory.
 
 apply_entrypoint_link() {
     spec="$1"
@@ -126,9 +128,11 @@ if [ ! -e "$STATE_DIR/claude/statusline-command.sh" ] && [ ! -L "$STATE_DIR/clau
     ln -s "../entrypoints/claude/statusline-command.sh" "$STATE_DIR/claude/statusline-command.sh"
 fi
 
-if [ -f /etc/agent-sandbox/zshrc ]; then
-    cp /etc/agent-sandbox/zshrc "$HOME/.zshrc"
-fi
+# /etc/agent-sandbox/zshrc is image-layer (baked in by Dockerfile). Required —
+# fail loud (set -e) if missing or unreadable rather than silently leaving the
+# user without a configured zsh, which is what the previous `[ -f ]` guard did
+# whenever EACCES bit (e.g. when BuildKit gave the parent dir mode 644).
+cp /etc/agent-sandbox/zshrc "$HOME/.zshrc"
 
 cat > "$HOME/.zshenv" <<'EOF'
 export XDG_CONFIG_HOME=${XDG_CONFIG_HOME:-/state/xdg/config}

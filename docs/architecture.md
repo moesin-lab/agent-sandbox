@@ -28,7 +28,17 @@ Agent 的交互式运行环境。挂载点：
 - 规矩应用通过 `XDG_CONFIG_HOME=/state/xdg/config`、`XDG_DATA_HOME=/state/xdg/data`、`XDG_STATE_HOME=/state/xdg/state`、`XDG_CACHE_HOME=/cache/xdg` 收口
 - 常见 home 子路径如 `~/.config`、`~/.cache`、`~/.local/share`、`~/.local/state` 被 symlink 到对应 XDG 根
 - `~/.claude`、`~/.codex`、`~/.ssh`、`~/.gitconfig` 等兼容路径指向 `/state` 下的稳定位置
-- shell rc/profile 骨架由镜像层每次生成，末尾 source `/state/shell/*.local` 作为持久化扩展点
+- shell rc/profile 骨架由镜像层每次生成，末尾 source `/state/shell/*.local` 与 `/state/env.local` 作为持久化扩展点
+- shell history 通过 `HISTFILE=$XDG_STATE_HOME/{zsh,bash}_history` 落到 `/state/xdg/state/`；不在 `~/.zsh_history` / `~/.bash_history` 处放 symlink（两条路径会抢同一份历史，HISTFILE 赢，symlink 是死的）
+
+镜像层的 shell 启动骨架 + 共享脚本集中在 `/etc/agent-sandbox/`：
+
+| 路径 | 作用 |
+| --- | --- |
+| `/etc/agent-sandbox/zshrc` | entrypoint 每次 `cp` 到 `~/.zshrc` 的骨架（starship init / HISTFILE / alias / 末尾 source `/state/shell/zshrc.local`）|
+| `/etc/agent-sandbox/env-loader.sh` | `~/.zshenv` / `~/.profile` / `~/.bashrc` 都 source 它，按白名单解析 `/state/env.local` 注入环境变量 |
+
+这条目录由 Dockerfile 显式 `install -d -m 0755` 创建：BuildKit 的 `COPY --chmod=NNN` 在隐式建 parent dir 时会把同一权限值套到目录上（644 → 缺 execute 位 → node 用户读不到里面），显式 mkdir 是为了规避这个坑。改这两份文件需要 rebuild sandbox 镜像（属于"故意只能从镜像层变更"那一类）。
 
 镜像内预装的 Agent CLI：
 
