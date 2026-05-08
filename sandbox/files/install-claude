@@ -6,7 +6,8 @@ if [ "${1:-}" = "--force" ]; then
     FORCE=1
 fi
 
-DEST_DIR="${AGENT_SANDBOX_TOOL_BIN:-/tool-bin}"
+TOOL_BIN="${AGENT_SANDBOX_TOOL_BIN:-/tool-bin}"
+DEST_DIR="$TOOL_BIN/managed"
 DEST="$DEST_DIR/claude"
 SUM="$DEST.sha256"
 VERSION_FILE="$DEST.version"

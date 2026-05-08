@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 
-tool_dir="${AGENT_SANDBOX_TOOL_BIN:-/tool-bin}"
+tool_dir="${AGENT_SANDBOX_TOOL_BIN:-/tool-bin}/managed"
 tool="$tool_dir/claude"
 sum="$tool.sha256"
 

@@ -29,7 +29,9 @@ RUN if [ "$ENABLE_PASSWORDLESS_SUDO" = "1" ]; then \
     fi \
     && chsh -s /bin/zsh node
 
-# npm global prefix that the node user can write to.
+# Image-baked npm global prefix used at build time for bundled CLIs (codex).
+# Runtime NPM_CONFIG_PREFIX points at /tool-bin/user/npm-global so user/agent
+# `npm i -g` installs persist without rebuilding the image.
 RUN mkdir -p /usr/local/share/npm-global \
     && mkdir -p /cache/npm \
     && chown -R node:node /usr/local/share/npm-global /cache
@@ -41,7 +43,7 @@ ENV LANG=en_US.UTF-8 \
     LC_ALL=en_US.UTF-8 \
     EDITOR=vim \
     SHELL=/bin/zsh \
-    NPM_CONFIG_PREFIX=/usr/local/share/npm-global \
+    NPM_CONFIG_PREFIX=/tool-bin/user/npm-global \
     AGENT_SANDBOX_RUNTIME=/state \
     AGENT_SANDBOX_TOOL_BIN=/tool-bin \
     XDG_CONFIG_HOME=/state/xdg/config \
@@ -50,7 +52,7 @@ ENV LANG=en_US.UTF-8 \
     XDG_CACHE_HOME=/cache/xdg \
     XDG_RUNTIME_DIR=/tmp/xdg-runtime \
     NPM_CONFIG_CACHE=/cache/npm \
-    PATH=/usr/local/share/npm-global/bin:/usr/local/bin:/usr/bin:/bin
+    PATH=/tool-bin/user/bin:/tool-bin/user/npm-global/bin:/usr/local/share/npm-global/bin:/usr/local/bin:/usr/bin:/bin
 
 COPY --chmod=755 files/entrypoint /usr/local/bin/sandbox-entrypoint
 COPY --chmod=755 files/install-claude /usr/local/bin/install-claude
@@ -60,9 +62,10 @@ COPY --chmod=644 files/zshrc /etc/agent-sandbox/zshrc
 WORKDIR /workspace
 USER node
 
-# Codex CLI (still distributed via npm). Installed as the node user so files
-# land in NPM_CONFIG_PREFIX with correct ownership.
-RUN npm install -g @openai/codex
+# Codex CLI (still distributed via npm). Installed at build time into the
+# image-baked npm prefix so it ships with the image; runtime NPM_CONFIG_PREFIX
+# is overridden to /tool-bin/user/npm-global for user/agent installs.
+RUN NPM_CONFIG_PREFIX=/usr/local/share/npm-global npm install -g @openai/codex
 
 ENTRYPOINT ["/usr/local/bin/sandbox-entrypoint"]
 CMD ["zsh", "-i"]

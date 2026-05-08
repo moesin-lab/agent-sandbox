@@ -20,7 +20,7 @@ Agent 的交互式运行环境。挂载点：
 - `runtime/workspaces` → `/workspace`（项目代码）
 - `runtime/state` → `/state`（oauth、session、sqlite、小数据库、普通配置）
 - `runtime/logs` → `/logs`
-- `runtime/tool-bin` → `/tool-bin`（运行时下载的可执行物，高风险入口）
+- `runtime/tool-bin` → `/tool-bin`（持久化可执行物：`managed/` wrapper 下载、不在 PATH；`user/` 用户/agent 安装、**在** PATH）
 - tmpfs → `/cache`（可重建缓存，重启即丢）
 
 `/home/node` 是 tmpfs，不再作为整体持久化单元。容器入口每次启动时在 home 中生成 symlink 视图：
@@ -28,12 +28,12 @@ Agent 的交互式运行环境。挂载点：
 - 规矩应用通过 `XDG_CONFIG_HOME=/state/xdg/config`、`XDG_DATA_HOME=/state/xdg/data`、`XDG_STATE_HOME=/state/xdg/state`、`XDG_CACHE_HOME=/cache/xdg` 收口
 - 常见 home 子路径如 `~/.config`、`~/.cache`、`~/.local/share`、`~/.local/state` 被 symlink 到对应 XDG 根
 - `~/.claude`、`~/.codex`、`~/.ssh`、`~/.gitconfig` 等兼容路径指向 `/state` 下的稳定位置
-- shell rc/profile 由镜像层每次生成，不从 `/state` 自动 source
+- shell rc/profile 骨架由镜像层每次生成，末尾 source `/state/shell/*.local` 作为持久化扩展点
 
 镜像内预装的 Agent CLI：
 
-- `claude`：镜像层提供 `/usr/local/bin/claude` wrapper。首次执行时 wrapper 调用 `/usr/local/bin/install-claude`，在线下载并按官方 `manifest.json` 校验 SHA256，然后写入 `/tool-bin/claude`。`/tool-bin` 不在默认 `PATH` 中，后续执行仍通过镜像层 wrapper 进入；需要 pin 版本时可设置 `CLAUDE_RELEASE_TAG`。
-- `codex`：通过 `npm install -g @openai/codex` 装在 `/usr/local/share/npm-global/bin`（`NPM_CONFIG_PREFIX` 控制路径），镜像层即可用。
+- `claude`：镜像层提供 `/usr/local/bin/claude` wrapper。首次执行时 wrapper 调用 `/usr/local/bin/install-claude`，在线下载并按官方 `manifest.json` 校验 SHA256，然后写入 `/tool-bin/managed/claude`。`/tool-bin/managed/` 不在默认 `PATH` 中，后续执行仍通过镜像层 wrapper 进入；需要 pin 版本时可设置 `CLAUDE_RELEASE_TAG`。
+- `codex`：构建时以 `NPM_CONFIG_PREFIX=/usr/local/share/npm-global` 装在镜像层 `/usr/local/share/npm-global/bin`，镜像层即可用。运行时 `NPM_CONFIG_PREFIX` 被改为 `/tool-bin/user/npm-global`，这样容器内 `npm i -g <pkg>` 会写到持久化目录并自动进 PATH。
 
 API 凭据通过 host 环境变量透传，参考 `compose.yaml` 的 `sandbox.environment`：
 
@@ -81,7 +81,7 @@ sandbox 服务没有自己的 `networks` 块，因为 `network_mode: "service:pr
 
 1. `bin/agent-sandbox up` 启动默认模式；`bin/agent-sandbox up simple` 启动简洁模式。
 2. proxy 启动脚本生成自签 cert、初始化 ssl_db、装好 iptables NAT 规则、exec 到 squid。
-3. sandbox 容器入口在 tmpfs home 中生成 XDG/symlink 视图和默认 shell 启动文件，然后 exec 到 zsh（或 compose 指定的命令）。
+3. sandbox 容器入口在 tmpfs home 中生成 XDG/symlink 视图、`/tool-bin/managed/` 与 `/tool-bin/user/{bin,npm-global/bin}` 子目录、以及默认 shell 启动骨架（末尾 source `/state/shell/*.local`），然后 exec 到 zsh（或 compose 指定的命令）。
 4. sandbox 内 80/443 流量被 proxy 容器的 iptables 透明重定向到 squid；默认模式下，其它端口（含 mcp-gateway:8080）直连。
 5. 只有默认模式会注入 `MCP_GITHUB_URL`，MCP 工具调用再经 `mcp-gateway` 由 `mcp-proxy` 转 stdio。
 

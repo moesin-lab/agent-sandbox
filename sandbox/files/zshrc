@@ -8,6 +8,10 @@ setopt SHARE_HISTORY HIST_IGNORE_DUPS HIST_REDUCE_BLANKS
 alias ll='ls -lAh'
 alias la='ls -A'
 
-# Persistent executable downloads live in /tool-bin for auditability, but that
-# directory is intentionally not added to PATH. Use image-provided wrappers
-# such as /usr/local/bin/claude for tools that need a runtime binary.
+# /tool-bin/managed/ holds image-wrapper-managed binaries (e.g. claude) and is
+# intentionally NOT in PATH; call them through wrappers like /usr/local/bin/claude.
+# /tool-bin/user/{bin,npm-global/bin} IS in PATH for user/agent installs that
+# need to persist across restarts. Anything dropped there will execute on the
+# next shell, so treat the directory as part of the execution chain.
+
+[ -f /state/shell/zshrc.local ] && . /state/shell/zshrc.local

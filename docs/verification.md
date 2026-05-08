@@ -32,7 +32,7 @@ bin/agent-sandbox doctor
 6. **环境变量**：`MCP_GITHUB_URL` 指向 `http://mcp-gateway:8080/servers/github/mcp`
 7. **代理透明**：sandbox 内 `HTTP_PROXY` / `HTTPS_PROXY` 都不存在
 8. **持久化边界**：`/home/node` 是 tmpfs，根文件系统是只读挂载，XDG 指向 `/state`/`/cache`
-9. **执行入口收口**：`PATH` 不包含 `/tool-bin`、`~/.local/bin` 或 `/workspace/bin`
+9. **执行入口收口**：`PATH` 不包含扁平 `/tool-bin`、`~/.local/bin` 或 `/workspace/bin`；`/tool-bin/managed` 不在 `PATH`，但 `/tool-bin/user/bin` 与 `/tool-bin/user/npm-global/bin` **在** `PATH`（持久化扩展点）
 10. **写路径**：`/state`、`/cache`、`/logs`、`/tool-bin` 可写，常见 home 子路径是 symlink
 11. `trap cleanup EXIT` 触发 `docker compose down`
 

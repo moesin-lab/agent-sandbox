@@ -39,8 +39,11 @@ fi
 "${COMPOSE[@]}" exec -T sandbox sh -lc 'mount | grep " on /home/node " | grep -q tmpfs'
 "${COMPOSE[@]}" exec -T sandbox sh -lc 'mount | grep " on / type " | grep -q "(ro,"'
 "${COMPOSE[@]}" exec -T sandbox sh -lc 'test "$XDG_CONFIG_HOME" = "/state/xdg/config" && test "$XDG_CACHE_HOME" = "/cache/xdg"'
-"${COMPOSE[@]}" exec -T sandbox sh -lc 'case ":$PATH:" in *":/tool-bin:"*|*":/home/node/.local/bin:"*|*":/workspace/bin:"*) exit 1;; esac'
-"${COMPOSE[@]}" exec -T sandbox sh -lc 'test -w /state && test -w /cache && test -w /logs && test -w /tool-bin'
+"${COMPOSE[@]}" exec -T sandbox sh -lc 'case ":$PATH:" in *":/tool-bin:"*|*":/tool-bin/managed:"*|*":/home/node/.local/bin:"*|*":/workspace/bin:"*) exit 1;; esac'
+"${COMPOSE[@]}" exec -T sandbox sh -lc 'case ":$PATH:" in *":/tool-bin/user/bin:"*) :;; *) exit 1;; esac'
+"${COMPOSE[@]}" exec -T sandbox sh -lc 'case ":$PATH:" in *":/tool-bin/user/npm-global/bin:"*) :;; *) exit 1;; esac'
+"${COMPOSE[@]}" exec -T sandbox sh -lc 'test -w /state && test -w /cache && test -w /logs && test -w /tool-bin/managed && test -w /tool-bin/user/bin && test -w /tool-bin/user/npm-global'
+"${COMPOSE[@]}" exec -T sandbox sh -lc 'test "$NPM_CONFIG_PREFIX" = "/tool-bin/user/npm-global"'
 "${COMPOSE[@]}" exec -T sandbox sh -lc 'test -L "$HOME/.claude" && test -L "$HOME/.cache" && test -d "$HOME/.local/bin" && test ! -L "$HOME/.local/bin"'
 
 echo "verify: ok"

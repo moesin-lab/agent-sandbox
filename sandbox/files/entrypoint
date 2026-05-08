@@ -28,10 +28,20 @@ mkdir -p \
     "$CACHE_DIR" \
     "/cache/npm" \
     "/cache/pnpm-store" \
-    "$TOOL_BIN" \
+    "$TOOL_BIN/managed" \
+    "$TOOL_BIN/user/bin" \
+    "$TOOL_BIN/user/npm-global/bin" \
     "$RUNTIME_DIR" \
     "$HOME/.local" \
     "/logs"
+
+# One-time migration: prior layout stored claude wrapper outputs flat in
+# /tool-bin. Move them into /tool-bin/managed/ so the new wrapper finds them.
+for f in claude claude.sha256 claude.version; do
+    if [ -e "$TOOL_BIN/$f" ] && [ ! -e "$TOOL_BIN/managed/$f" ]; then
+        mv "$TOOL_BIN/$f" "$TOOL_BIN/managed/$f"
+    fi
+done
 
 chmod 700 "$RUNTIME_DIR" "$STATE_DIR/ssh" 2>/dev/null || true
 
@@ -115,6 +125,7 @@ export XDG_DATA_HOME=${XDG_DATA_HOME:-/state/xdg/data}
 export XDG_STATE_HOME=${XDG_STATE_HOME:-/state/xdg/state}
 export XDG_CACHE_HOME=${XDG_CACHE_HOME:-/cache/xdg}
 export XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-/tmp/xdg-runtime}
+[ -f /state/shell/zshenv.local ] && . /state/shell/zshenv.local
 EOF
 
 cat > "$HOME/.profile" <<'EOF'
@@ -123,10 +134,12 @@ export XDG_DATA_HOME=${XDG_DATA_HOME:-/state/xdg/data}
 export XDG_STATE_HOME=${XDG_STATE_HOME:-/state/xdg/state}
 export XDG_CACHE_HOME=${XDG_CACHE_HOME:-/cache/xdg}
 export XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-/tmp/xdg-runtime}
+[ -f /state/shell/profile.local ] && . /state/shell/profile.local
 EOF
 
 cat > "$HOME/.bashrc" <<'EOF'
 export HISTFILE=${XDG_STATE_HOME:-/state/xdg/state}/bash_history
+[ -f /state/shell/bashrc.local ] && . /state/shell/bashrc.local
 EOF
 
 exec "$@"
