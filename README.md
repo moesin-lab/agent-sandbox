@@ -56,7 +56,7 @@ ln -s /path/to/agent-sandbox/bin/sandbox       ~/.local/bin/sandbox
 
 ### 在 host 目录直接调容器内 CLI
 
-`agent-sandbox <cli> [args...]` 把 host cwd 映射到容器里的 `/workspace/<相对子路径>`，`cd` 过去再 `exec`，前提是 cwd 在 workspace 挂载范围内（`AGENT_SANDBOX_WORKSPACE_DIR`，默认 `./runtime/workspaces`）。cwd 在挂载之外会直接拒绝。
+`agent-sandbox <cli> [args...]` 把 host cwd 映射到容器里的 `/workspace/<相对子路径>`，`cd` 过去再 `exec`。cwd 在 workspace 挂载范围（`AGENT_SANDBOX_WORKSPACE_DIR`，默认 `./runtime/workspaces`）之外时，回退到 `/workspace` 并在 stderr 提示，不拒绝。
 
 ```bash
 cd runtime/workspaces/myproj/api

@@ -235,23 +235,21 @@ run_in_sandbox() {
 
   cwd="$(pwd -P)"
   case "$cwd/" in
-    "$workspace_dir"/*) ;;
+    "$workspace_dir"/*)
+      rel=${cwd#"$workspace_dir"}
+      rel=${rel#/}
+      container_dir="$workspace_target"
+      [[ -n "$rel" ]] && container_dir="$workspace_target/$rel"
+      ;;
     *)
-      cat >&2 <<EOF
-agent-sandbox: cwd is not inside the workspace mount; refusing to dispatch.
-  cwd:       $cwd
-  workspace: $workspace_dir
-  Either cd into the workspace, or override AGENT_SANDBOX_WORKSPACE_DIR to a
-  parent that contains your cwd.
-EOF
-      exit 1
+      # cwd is outside the workspace mount — there's no in-container path that
+      # corresponds to it, so fall back to the workspace root rather than
+      # refusing. Print to stderr so the user notices the redirect.
+      printf 'agent-sandbox: cwd (%s) is outside the workspace mount (%s); using %s\n' \
+        "$cwd" "$workspace_dir" "$workspace_target" >&2
+      container_dir="$workspace_target"
       ;;
   esac
-
-  rel=${cwd#"$workspace_dir"}
-  rel=${rel#/}
-  container_dir="$workspace_target"
-  [[ -n "$rel" ]] && container_dir="$workspace_target/$rel"
 
   ensure_sandbox_running "$mode"
 

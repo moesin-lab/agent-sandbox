@@ -203,13 +203,8 @@ sleep 2
 "${COMPOSE[@]}" exec -T sandbox sh -lc 'command -v mails >/dev/null'
 
 # --- new: agent-sandbox <cli> passthrough -----------------------------------
-# Refuse when cwd is outside the workspace mount; map cwd → /workspace/<rel>
-# when inside. Use `pwd` as the in-container probe.
-
-if ( cd /tmp && "$ROOT/bin/agent-sandbox" pwd >/dev/null 2>&1 ); then
-  echo "verify: passthrough should refuse cwd outside workspace, but it accepted" >&2
-  exit 1
-fi
+# Inside workspace: map cwd → /workspace/<rel>.
+# Outside workspace: fall back to /workspace (warn on stderr, don't refuse).
 
 mkdir -p "$ROOT/runtime/workspaces/verify-passthrough/sub"
 out=$( cd "$ROOT/runtime/workspaces/verify-passthrough/sub" \
@@ -219,5 +214,11 @@ test "$out" = "/workspace/verify-passthrough/sub" || {
   exit 1
 }
 rm -rf "$ROOT/runtime/workspaces/verify-passthrough"
+
+out=$( cd /tmp && "$ROOT/bin/agent-sandbox" pwd 2>/dev/null )
+test "$out" = "/workspace" || {
+  echo "verify: passthrough from /tmp should fall back to /workspace, got '$out'" >&2
+  exit 1
+}
 
 echo "verify: ok"
