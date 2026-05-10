@@ -1,15 +1,41 @@
+# Runtime state — host bind-mount targets. The agent / tools write user data
+# here at runtime; never commit. Keep .gitkeep so the empty dirs are tracked.
 runtime/workspaces/*
 runtime/home/*
 runtime/logs/*
 runtime/state/*
 runtime/tool-bin/*
-!runtime/workspaces/.gitkeep
-!runtime/home/.gitkeep
-!runtime/logs/.gitkeep
-!runtime/state/.gitkeep
-!runtime/tool-bin/.gitkeep
+!runtime/*/.gitkeep
+
+# Local config overrides — kept on the developer's machine, never in the repo.
 .env
+.envrc
+compose.override.yaml
+compose.override.yml
+docker-compose.override.yaml
+docker-compose.override.yml
+
+# Logs
 *.log
 
+# Editor / OS scratch
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# AI agent / IDE plugin local dirs that occasionally get dropped at repo root.
+# The container is the right home for these; on host they're per-developer.
+.claude/
+.codex/
+.cursor/
+.continue/
+.windsurf/
+.aider*
+
+# Session-local scratch (handoff notes, memsearch index, blocking-question log).
 .memsearch/
 handoff/
+/.note.md
