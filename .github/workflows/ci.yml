@@ -22,7 +22,7 @@ jobs:
         run: |
           for f in \
             sandbox/files/entrypoint \
-            sandbox/files/install-claude \
+            sandbox/files/env-loader.sh \
             sandbox/files/claude
           do
             sh -n "$f"
@@ -43,7 +43,7 @@ jobs:
         run: |
           shellcheck --severity=error -s sh \
             sandbox/files/entrypoint \
-            sandbox/files/install-claude \
+            sandbox/files/env-loader.sh \
             sandbox/files/claude
           shellcheck --severity=error \
             proxy/entrypoint.sh \
