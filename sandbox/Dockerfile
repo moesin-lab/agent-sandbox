@@ -56,7 +56,7 @@ ENV LANG=en_US.UTF-8 \
 # lives under ~/.nix-portable, which the entrypoint redirects to
 # /state/dev-cache/nix-portable via the home-ephemeral list.
 ARG TARGETARCH
-ARG NIX_PORTABLE_VERSION=v012.0
+ARG NIX_PORTABLE_VERSION=v012
 RUN case "${TARGETARCH:-amd64}" in \
         amd64)  np_arch=x86_64 ;; \
         arm64)  np_arch=aarch64 ;; \
