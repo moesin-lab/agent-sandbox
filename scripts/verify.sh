@@ -194,6 +194,25 @@ fi
   mkdir -p "$config" "$cache" "$data" "$state" && test -w "$config" && test -w "$cache" && test -w "$data" && test -w "$state"
 '
 
+# Git global ignore is seeded and wired to the persistent XDG ignore file.
+"${COMPOSE[@]}" exec -T sandbox sh -lc '
+  set -e
+  ignore="$HOME/.config/git/ignore"
+  marker="agent-sandbox-verify.ignore"
+  test "$(git config --global --get core.excludesfile)" = "$ignore"
+  test -f "$ignore"
+  trap "sed -i \"/^$marker\$/d\" \"$ignore\" 2>/dev/null || true" EXIT
+  grep -Fxq "$marker" "$ignore" || printf "\n%s\n" "$marker" >> "$ignore"
+  rm -rf /tmp/git-ignore-verify
+  mkdir -p /tmp/git-ignore-verify
+  cd /tmp/git-ignore-verify
+  git init -q
+  : > "$marker"
+  : > keep.txt
+  status=$(git status --short --untracked-files=all)
+  test "$status" = "?? keep.txt"
+'
+
 # --- shell rc scaffold + env-loader (regenerated every start) ---------------
 
 "${COMPOSE[@]}" exec -T sandbox ls -la /state/env.local /etc/agent-sandbox/env-loader.sh

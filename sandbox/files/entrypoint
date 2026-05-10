@@ -107,6 +107,17 @@ remove_legacy_path "$STATE_DIR/legacy-archive"
 
 chmod 700 "$HOME/.ssh" 2>/dev/null || true
 
+# Git should always use the inspectable XDG global ignore file. Older migrated
+# homes may still point core.excludesfile at ~/.gitignore_global, which may not
+# exist after the state layout cleanup.
+mkdir -p "$HOME/.config/git"
+if [ ! -e "$HOME/.config/git/ignore" ]; then
+    : > "$HOME/.config/git/ignore"
+fi
+if command -v git >/dev/null 2>&1; then
+    git config --global core.excludesfile "$HOME/.config/git/ignore" 2>/dev/null || true
+fi
+
 # ---------------------------------------------------------------------------
 # Retire default symlinks from the previous layout. Only links that still point
 # to the old default targets are removed; user-created links to other targets
