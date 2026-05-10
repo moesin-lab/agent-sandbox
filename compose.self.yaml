@@ -1,0 +1,20 @@
+name: agent_sandbox
+
+# Overlay that exposes the host-side agent-sandbox repo at /self inside the
+# sandbox, so an agent running in the container can edit the codebase that
+# built it (self-modification / bootstrap).
+#
+# Apply via `bin/agent-sandbox up --self` on top of compose.yaml or
+# compose.simple.yaml. AGENT_SANDBOX_SELF_DIR must be set (.env or shell env);
+# docker compose will refuse to start otherwise.
+#
+# /self is a normal bind mount with no masking. The agent sees the runtime/
+# subdir inside /self too, but it's the same data already exposed at /state,
+# /home/node, /workspace, and so on — .gitignore keeps `git status` clean
+# inside /self regardless.
+services:
+  sandbox:
+    volumes:
+      - type: bind
+        source: ${AGENT_SANDBOX_SELF_DIR:?Set AGENT_SANDBOX_SELF_DIR (host path of the agent-sandbox repo) to use --self}
+        target: /self

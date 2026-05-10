@@ -12,19 +12,23 @@ while [[ -L "$SOURCE" ]]; do
 done
 ROOT="$(cd -P "$(dirname "$SOURCE")/.." >/dev/null && pwd)"
 MODE_FILE="$ROOT/runtime/state/compose-mode"
+SELF_FILE="$ROOT/runtime/state/compose-self"
 
 usage() {
   cat <<'EOF'
 Usage:
-  bin/agent-sandbox up [default|simple]
+  bin/agent-sandbox up [default|simple] [--self]
   bin/agent-sandbox down [default|simple]
   bin/agent-sandbox shell [default|simple]
   bin/agent-sandbox logs [default|simple]
   bin/agent-sandbox doctor
   bin/agent-sandbox <cli> [args...]
       Run a container-side CLI (claude / codex / opencode / ...) at the
-      cwd-mapped path inside the sandbox. cwd must be under the workspace
-      mount (AGENT_SANDBOX_WORKSPACE_DIR; default ./runtime/workspaces).
+      cwd-mapped path inside the sandbox. cwd under the workspace mount
+      (AGENT_SANDBOX_WORKSPACE_DIR; default ./runtime/workspaces) maps to
+      /workspace/<rel>; cwd under the self mount (AGENT_SANDBOX_SELF_DIR,
+      requires --self at up time) maps to /self/<rel>; otherwise falls back
+      to /workspace.
 EOF
 }
 
@@ -79,7 +83,12 @@ compose_cmd() {
   # --project-directory pins relative paths (build context, host volumes) and
   # .env discovery to the repo root, so the script behaves identically no
   # matter which cwd the user invokes it from.
-  docker compose --project-directory "$ROOT" -f "$compose_file" "$@"
+  local args=(--project-directory "$ROOT" -f "$compose_file")
+  # Stack the self overlay if a previous `up --self` left the sentinel.
+  if [[ -f "$SELF_FILE" ]]; then
+    args+=(-f "$ROOT/compose.self.yaml")
+  fi
+  docker compose "${args[@]}" "$@"
 }
 
 SANDBOX_UID=1000
@@ -168,8 +177,15 @@ wait_for_service() {
 }
 
 start_mode() {
-  local mode="$1"
+  local mode="$1" want_self="${2:-0}"
   check_runtime_perms
+  # Toggle the self sentinel BEFORE compose runs, so compose_cmd picks up the
+  # overlay (if requested) on this invocation.
+  if [[ "$want_self" == "1" ]]; then
+    : > "$SELF_FILE"
+  else
+    rm -f "$SELF_FILE"
+  fi
   local prereqs=(proxy)
   if [[ "$mode" == "default" ]]; then
     prereqs+=(mcp-gateway autoheal)
@@ -187,7 +203,10 @@ ensure_sandbox_running() {
   if service_running "$mode" sandbox; then
     return
   fi
-  start_mode "$mode"
+  # Preserve current self state when respawning via shell/passthrough.
+  local want_self=0
+  [[ -f "$SELF_FILE" ]] && want_self=1
+  start_mode "$mode" "$want_self"
 }
 
 # Read a `KEY=value` line from $ROOT/.env, falling back to a default. Already-
@@ -219,7 +238,7 @@ quote_for_sh() {
 }
 
 run_in_sandbox() {
-  local mode workspace_dir workspace_target cwd rel container_dir
+  local mode workspace_dir workspace_target self_dir cwd rel container_dir
   mode="$(resolve_mode "")"
 
   workspace_dir="$(load_env_default AGENT_SANDBOX_WORKSPACE_DIR "./runtime/workspaces")"
@@ -233,6 +252,20 @@ run_in_sandbox() {
     exit 1
   fi
 
+  # The /self mount only exists when the sandbox was brought up with --self;
+  # only then does cwd-under-self_dir map to /self/<rel>.
+  self_dir=""
+  if [[ -f "$SELF_FILE" ]]; then
+    self_dir="$(load_env_default AGENT_SANDBOX_SELF_DIR "")"
+    if [[ -n "$self_dir" ]]; then
+      case "$self_dir" in
+        /*) ;;
+        *) self_dir="$ROOT/$self_dir" ;;
+      esac
+      self_dir="$(cd "$self_dir" 2>/dev/null && pwd -P)" || self_dir=""
+    fi
+  fi
+
   cwd="$(pwd -P)"
   case "$cwd/" in
     "$workspace_dir"/*)
@@ -242,12 +275,21 @@ run_in_sandbox() {
       [[ -n "$rel" ]] && container_dir="$workspace_target/$rel"
       ;;
     *)
-      # cwd is outside the workspace mount — there's no in-container path that
-      # corresponds to it, so fall back to the workspace root rather than
-      # refusing. Print to stderr so the user notices the redirect.
-      printf 'agent-sandbox: cwd (%s) is outside the workspace mount (%s); using %s\n' \
-        "$cwd" "$workspace_dir" "$workspace_target" >&2
-      container_dir="$workspace_target"
+      if [[ -n "$self_dir" ]] && [[ "$cwd/" == "$self_dir"/* ]]; then
+        rel=${cwd#"$self_dir"}
+        rel=${rel#/}
+        container_dir="/self"
+        [[ -n "$rel" ]] && container_dir="/self/$rel"
+      else
+        # cwd is outside both mounts — fall back to /workspace rather than
+        # refusing. Print to stderr so the user notices the redirect.
+        local hint=" (workspace=$workspace_dir"
+        [[ -n "$self_dir" ]] && hint="$hint, self=$self_dir"
+        hint="$hint)"
+        printf 'agent-sandbox: cwd (%s) is outside known mounts%s; using %s\n' \
+          "$cwd" "$hint" "$workspace_target" >&2
+        container_dir="$workspace_target"
+      fi
       ;;
   esac
 
@@ -263,13 +305,23 @@ run_in_sandbox() {
 
 case "${1:-}" in
   up)
-    mode="$(resolve_mode "${2:-}")"
-    start_mode "$mode"
+    shift
+    mode_arg=""
+    want_self=0
+    while [[ $# -gt 0 ]]; do
+      case "$1" in
+        --self) want_self=1 ;;
+        *)      mode_arg="$1" ;;
+      esac
+      shift
+    done
+    mode="$(resolve_mode "$mode_arg")"
+    start_mode "$mode" "$want_self"
     ;;
   down)
     mode="$(resolve_mode "${2:-}")"
     compose_cmd "$mode" down
-    rm -f "$MODE_FILE"
+    rm -f "$MODE_FILE" "$SELF_FILE"
     ;;
   shell)
     mode="$(resolve_mode "${2:-}")"

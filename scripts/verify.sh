@@ -221,4 +221,32 @@ test "$out" = "/workspace" || {
   exit 1
 }
 
+# --- new: --self overlay --------------------------------------------------
+# Tear down the current stack and re-up with --self pointing at this repo.
+# cleanup trap will down the stack at the end either way.
+"${COMPOSE[@]}" down >/dev/null
+export AGENT_SANDBOX_SELF_DIR="$ROOT"
+"$ROOT/bin/agent-sandbox" up --self
+
+# /self is now mounted; cwd at $ROOT maps to /self
+out=$( cd "$ROOT" && "$ROOT/bin/agent-sandbox" pwd )
+test "$out" = "/self" || {
+  echo "verify: with --self, cwd at repo root should map to /self, got '$out'" >&2
+  exit 1
+}
+
+# Subdir under self_dir maps to /self/<rel>
+out=$( cd "$ROOT/sandbox" && "$ROOT/bin/agent-sandbox" pwd )
+test "$out" = "/self/sandbox" || {
+  echo "verify: with --self, cwd at \$ROOT/sandbox should map to /self/sandbox, got '$out'" >&2
+  exit 1
+}
+
+# cwd outside both workspace and self still falls back to /workspace
+out=$( cd /tmp && "$ROOT/bin/agent-sandbox" pwd 2>/dev/null )
+test "$out" = "/workspace" || {
+  echo "verify: with --self, cwd /tmp should still fall back to /workspace, got '$out'" >&2
+  exit 1
+}
+
 echo "verify: ok"

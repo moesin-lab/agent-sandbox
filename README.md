@@ -67,6 +67,34 @@ agent-sandbox pwd                 # 调试映射：输出 /workspace/myproj/api
 
 任何容器内 `PATH` 上的二进制都能这么调（镜像自带的 `claude` / `codex` / `mails`、用户在 `/tool-bin/user/` 装的、`nix-portable` 装的），不限白名单。
 
+### 自举（让 sandbox 内的 agent 编辑 sandbox 自己的代码）
+
+把这份 repo 自己挂进容器 `/self`，agent 在 sandbox 里就能改 `sandbox/Dockerfile` / `compose.yaml` / `scripts/verify.sh` / `docs/` 等，host 侧立即可见。
+
+`.env` 里设 host 上 repo 的绝对路径：
+
+```env
+AGENT_SANDBOX_SELF_DIR=/Users/me/code/agent-sandbox
+```
+
+启动时加 `--self`：
+
+```bash
+bin/agent-sandbox up --self     # 默认拓扑 + /self 挂载
+bin/agent-sandbox up simple --self
+```
+
+之后从 host 上 repo 任意子目录跑 `agent-sandbox <cli>`，cwd 自动映射到容器里的 `/self/<相对路径>`：
+
+```bash
+cd ~/code/agent-sandbox/sandbox
+agent-sandbox claude       # 进容器后 cwd = /self/sandbox
+```
+
+`/self/runtime` 在容器里看得见，但里面的内容跟容器自己运行用的 `/state`、`/home/node`、`/workspace` 是同一份 host 数据；agent 只要不在 `/self/runtime/` 下做破坏性改动即可（跟它直接对 `/state` 干同样的事一样危险）。`.gitignore` 已经把 `runtime/*` 排掉，`git status` 在 `/self` 里不会被运行态污染。
+
+需要重建容器才能切换：sandbox 跑着时改 `--self` / 改 `AGENT_SANDBOX_SELF_DIR` 都得 `bin/agent-sandbox down && bin/agent-sandbox up [--self]`。
+
 ## 常用配置
 
 主要旋钮在 `.env`（从 `.env.example` 复制）。下面只列最常碰的几项，完整列表见 `.env.example`。

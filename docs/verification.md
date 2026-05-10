@@ -44,6 +44,7 @@ bin/agent-sandbox doctor
 18. **CLI 与 cwd / 调用方式无关**：`bin/agent-sandbox doctor` 在 `/tmp` 下、通过 PATH 调用、通过 symlink 调用都成功（doctor 检查的是 `$ROOT/...` 路径，过 = ROOT 解析对）
 19. **CLI 透传**：在 `runtime/workspaces/verify-passthrough/sub` 执行 `agent-sandbox pwd` 输出 `/workspace/verify-passthrough/sub`（workspace 内：cwd 映射 + 容器内 exec）；在 `/tmp` 执行 `agent-sandbox pwd` 输出 `/workspace`（workspace 外：回退到 `/workspace` + stderr 提示）
 20. **Healthcheck + autoheal**：`proxy` / `mcp-gateway` 的 `Health.Status` 都达到 `healthy`；autoheal sidecar 容器 `running` 且 `NetworkMode=none`
-21. `trap cleanup EXIT` 触发 `docker compose down`
+21. **`--self` overlay**：down 后用 `AGENT_SANDBOX_SELF_DIR=$ROOT bin/agent-sandbox up --self` 重启；从 `$ROOT` 跑 `agent-sandbox pwd` 输出 `/self`，从 `$ROOT/sandbox` 跑输出 `/self/sandbox`，从 `/tmp` 跑仍回退到 `/workspace`
+22. `trap cleanup EXIT` 触发 `docker compose down`
 
 任何一条失败脚本以非 0 退出。脚本写法假定从仓库根目录或 `scripts/` 目录调用都行，但务必在能启停容器的本地环境里执行。
