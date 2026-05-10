@@ -137,18 +137,25 @@ doctor() {
 
 service_running() {
   local mode="$1" service="$2"
-  local cid status
+  local cid status health
   cid="$(compose_cmd "$mode" ps -q "$service" 2>/dev/null || true)"
   if [[ -z "$cid" ]]; then
     return 1
   fi
   status="$(docker inspect -f '{{.State.Status}}' "$cid" 2>/dev/null || true)"
-  [[ "$status" == "running" ]]
+  [[ "$status" == "running" ]] || return 1
+  # If a healthcheck is configured, require Health.Status == healthy. Without
+  # one (e.g. sandbox / autoheal), running is the strongest signal we have.
+  health="$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "$cid" 2>/dev/null || true)"
+  case "$health" in
+    healthy|none) return 0 ;;
+    *)            return 1 ;;
+  esac
 }
 
 wait_for_service() {
   local mode="$1" service="$2"
-  local attempts=30
+  local attempts=60
   local i
   for ((i = 0; i < attempts; i++)); do
     if service_running "$mode" "$service"; then
@@ -156,7 +163,7 @@ wait_for_service() {
     fi
     sleep 1
   done
-  printf 'bin/agent-sandbox: service `%s` failed to reach running state\n' "$service" >&2
+  printf 'bin/agent-sandbox: service `%s` failed to reach running+healthy state\n' "$service" >&2
   return 1
 }
 
@@ -165,7 +172,7 @@ start_mode() {
   check_runtime_perms
   local prereqs=(proxy)
   if [[ "$mode" == "default" ]]; then
-    prereqs+=(mcp-gateway)
+    prereqs+=(mcp-gateway autoheal)
   fi
   compose_cmd "$mode" up -d "${prereqs[@]}"
   for svc in "${prereqs[@]}"; do

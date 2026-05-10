@@ -50,6 +50,23 @@ rm -rf "$tmplink"
 
 "$ROOT/bin/agent-sandbox" up
 
+# --- healthcheck + autoheal -------------------------------------------------
+# proxy / mcp-gateway expose Docker healthchecks; sandbox depends on them
+# being healthy, so reaching this point already proves they passed once.
+# Re-assert anyway to catch a regression where depends_on is loosened.
+
+proxy_cid=$("${COMPOSE[@]}" ps -q proxy)
+test "$(docker inspect -f '{{.State.Health.Status}}' "$proxy_cid")" = "healthy"
+
+mcp_cid=$("${COMPOSE[@]}" ps -q mcp-gateway)
+test "$(docker inspect -f '{{.State.Health.Status}}' "$mcp_cid")" = "healthy"
+
+# autoheal sidecar is up and on no network (only owns the docker socket).
+autoheal_cid=$("${COMPOSE[@]}" ps -q autoheal)
+test -n "$autoheal_cid"
+test "$(docker inspect -f '{{.State.Status}}' "$autoheal_cid")" = "running"
+test "$(docker inspect -f '{{.HostConfig.NetworkMode}}' "$autoheal_cid")" = "none"
+
 # --- network plane (unchanged) ----------------------------------------------
 
 "${COMPOSE[@]}" exec -T sandbox sh -c 'command -v curl' >/dev/null

@@ -79,6 +79,12 @@ MCP 平面的统一入口。镜像里聚合：
 
 mcp-gateway 不参与透明代理链路，端口 8080 不在 NAT 规则里，sandbox 通过容器名直连。
 
+### `autoheal`（仅默认拓扑）
+
+`willfarrell/autoheal:1.2.0` sidecar，根据 Docker `Health.Status` 自动 `docker restart` unhealthy 容器。`proxy` 和 `mcp-gateway` 各自在 Dockerfile 里声明了 `HEALTHCHECK`（NAT 链 + 监听端口 / `/status` 探活），并在 compose 层打 `autoheal=true` label，autoheal 只看带这个 label 的容器。autoheal 自身 `network_mode: "none"`，仅持有 `/var/run/docker.sock`，无入站攻击面。简洁拓扑不启用 autoheal——简洁模式只剩 proxy 一个能 unhealthy 的服务，价值不抵 docker socket 暴露。
+
+`bin/agent-sandbox` 的 `wait_for_service` 会在容器声明了 healthcheck 时要求 `Health.Status == healthy` 才视为 ready；没声明 healthcheck 的服务（例如 `sandbox` 的 `sleep infinity`）退回到 `State.Status == running`。
+
 ### `compose.yaml` 与 `compose.simple.yaml`
 
 仓库根有两份 compose 文件，共用相同的服务定义风格和网络模型：

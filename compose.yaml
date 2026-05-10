@@ -17,6 +17,9 @@ services:
     networks:
       - egress_net
       - agent_net
+    labels:
+      # Opt this service into the autoheal sidecar's restart loop.
+      - autoheal=true
 
   sandbox:
     build:
@@ -58,8 +61,10 @@ services:
       - CLAUDE_RELEASE_TAG
       - OPENAI_API_KEY
     depends_on:
-      - proxy
-      - mcp-gateway
+      proxy:
+        condition: service_healthy
+      mcp-gateway:
+        condition: service_healthy
 
   mcp-gateway:
     build:
@@ -80,6 +85,24 @@ services:
     networks:
       - egress_net
       - agent_net
+    labels:
+      - autoheal=true
+
+  # Autoheal watches Health.Status of containers labelled `autoheal=true` and
+  # `docker restart`s any that go unhealthy. It needs the docker socket, which
+  # is effectively host root — mitigated by network_mode:none (no inbound
+  # surface), pinned image tag, and label-mode (only watches what we mark).
+  autoheal:
+    image: willfarrell/autoheal:1.2.0
+    restart: always
+    network_mode: "none"
+    environment:
+      - AUTOHEAL_CONTAINER_LABEL=autoheal
+      - AUTOHEAL_INTERVAL=5
+      - AUTOHEAL_START_PERIOD=10
+      - AUTOHEAL_DEFAULT_STOP_TIMEOUT=10
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
 
 networks:
   agent_net:

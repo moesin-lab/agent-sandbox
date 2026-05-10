@@ -16,6 +16,7 @@
 | sandbox | 低于 host，仅可写少数 runtime 挂载和 tmpfs 目录 | `ANTHROPIC_API_KEY`、`OPENAI_API_KEY`（可选透传），oauth 凭据落 `runtime/state` |
 | proxy | 中性，仅做出网过滤；持有 `NET_ADMIN` cap 用于 iptables | 无 |
 | mcp-gateway | 持有面向受控外部 API 的高权限凭据 | `GITHUB_PERSONAL_ACCESS_TOKEN` |
+| autoheal（仅默认拓扑） | 持有 host docker socket（实质 host root），用于 `docker restart` unhealthy 容器 | 无（仅 socket 通路） |
 
 GitHub PAT 只注入 `mcp-gateway`。`sandbox` 与 `proxy` 都不应持有这个凭据，对 GitHub 的程序化访问只能走 mcp-gateway 暴露的 named server 路径。
 
@@ -44,6 +45,7 @@ GitHub PAT 只注入 `mcp-gateway`。`sandbox` 与 `proxy` 都不应持有这个
 - **`/tool-bin/user` 直接进入执行链**。这是为了让容器内 `npm i -g`、用户拖入静态二进制等操作能在重启后生效；agent 写入这里的任何可执行物，下次 shell 启动会自动 PATH 可见。该子目录的审计级别与 `/state/shell/*.local`、`/state/entrypoints/claude` 等同。
 - **持久化配置仍能影响工具行为**。例如 `~/.gitconfig`（位于 `runtime/home/.gitconfig`）、`~/.claude/{hooks,commands,skills,...}`、`/state/shell/*.local`、`/state/home-ephemeral.local` 都会改变后续 Git/Claude/shell 行为；home bind mount 让这些直接落到 `runtime/home/`，便于 host 侧审计，但同样不代表它们可信。entrypoint 拒绝把 `.zshrc/.zshenv/.profile/.bashrc/.bash_profile/.local/bin` 等启动链路径通过 ephemeral list 重映射，且每次启动覆盖 shell rc 骨架，所以 home 持久化不会让 `~/.zshrc` 自我增殖。
 - **镜像构建仍会直接出网**。`codex`、系统包和其它 build 依赖的获取仍通过宿主机网络，不经过本仓库的代理链路；`claude` 的运行时安装会经过 proxy 的透明代理链路。
+- **autoheal 持有 docker socket**。默认拓扑加了 `willfarrell/autoheal` sidecar，根据 `proxy` / `mcp-gateway` 的 healthcheck 自动重启 unhealthy 容器。这意味着 autoheal 容器一旦被攻陷等于 host root。缓解：image tag 锁版本（`willfarrell/autoheal:1.2.0`）、`network_mode: "none"` 切断入站、`AUTOHEAL_CONTAINER_LABEL=autoheal` 只看显式标记的容器。简洁拓扑（`compose.simple.yaml`）不启用 autoheal。如果你的威胁模型不接受任何持 docker socket 的容器，去掉默认拓扑里的 `autoheal` 服务、改用 host 侧 cron。
 
 ## 主要针对的风险
 
