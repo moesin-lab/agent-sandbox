@@ -18,6 +18,18 @@
 
 `/self/runtime/` 这条路径在容器里**确实可见**，但它跟 `/state`、`/home/node`、`/workspace` 是同一份 host 数据。在 `/self` 下编辑代码时**当作它不存在**——它只是因为 `/self` 是 host repo 整体挂载的副作用，不是你该编辑的对象。
 
+### `/self` 下被刻意遮掉的位置
+
+这几处在 sandbox 里是空的，host 真实内容没动：
+
+| 路径 | 你看到什么 | 为什么遮 |
+| --- | --- | --- |
+| `/self/.env` | 空文件（bind /dev/null） | 含 `GITHUB_PERSONAL_ACCESS_TOKEN`，PAT 只该让 mcp-gateway 看见 |
+| `/self/config/proxy-rules/` | 空只读 tmpfs，写入失败 | 改 blocklist 等于自我提权（proxy 重启后吃新规则） |
+| `/self/config/mcp-gateway/` | 空只读 tmpfs，写入失败 | 改 servers.json 等于塞新 MCP server / 改凭据路径 |
+
+如果某次任务真的需要改这三处之一，**不要试图绕过遮罩**（比如另写脚本、改 entrypoint 复制文件、用 nix-portable 重建逻辑）——那是在攻击你自己运行的 trust boundary。正确做法：在跟 host 沟通的回复里写清"需要改 X、原因 Y"，让 host 用户在外面手工编辑后 rebuild。
+
 ## 这次改动该不该改
 
 改 `/self` 之前先想：**这个改动是镜像层的，还是运行时层的？**
@@ -57,7 +69,7 @@
 - shell rc（`~/.zshrc/.zshenv/.profile/.bashrc`）每次启动从镜像层覆盖。这是防"agent 自我增殖"的核心机制。任何让 shell rc 内容跨重启存活的改动都是 regression。
 - `/tool-bin/managed` 不在 PATH（必须经 `/usr/local/bin/<wrapper>`）；`/tool-bin/user` 在 PATH（用户 / agent 装的）。混淆这两个会让"由谁管理"的边界塌掉。
 - proxy 是默认放行 + blocklist。改 squid.conf / blocklist 不要默默改成 default-deny，那会破坏 sandbox 的开发体验。
-- mcp-gateway 持有 GitHub PAT；sandbox 不持有。任何让 sandbox 拿到 PAT 的改动都是降级安全模型。
+- mcp-gateway 持有 GitHub PAT；sandbox 不持有。任何让 sandbox 拿到 PAT 的改动都是降级安全模型——包括但不限于：在 `/self/.env` 暴露 token、把 token 写进 `/self/config/mcp-gateway/servers.json` 的明文字段、给 sandbox 加 `env_file` 引用。
 - autoheal 持 docker socket 的边界已在 [`docs/security-model.md`](docs/security-model.md) 写明；不要扩 autoheal 的能力（不要给它装额外脚本、不要让它接外部网络）。
 
 ## 跟 host 用户沟通

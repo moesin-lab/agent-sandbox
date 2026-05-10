@@ -8,13 +8,34 @@ name: agent_sandbox
 # compose.simple.yaml. AGENT_SANDBOX_SELF_DIR must be set (.env or shell env);
 # docker compose will refuse to start otherwise.
 #
-# /self is a normal bind mount with no masking. The agent sees the runtime/
-# subdir inside /self too, but it's the same data already exposed at /state,
-# /home/node, /workspace, and so on — .gitignore keeps `git status` clean
-# inside /self regardless.
+# /self is a bind mount of the host repo. A few paths inside it are masked
+# because they sit on the *enforcement* side of the trust boundary and would
+# let the sandbox bypass it:
+#   - /self/.env                  contains GITHUB_PERSONAL_ACCESS_TOKEN; only
+#                                 mcp-gateway should see the PAT.
+#   - /self/config/proxy-rules/   if the sandbox could rewrite blocklist.txt
+#                                 the next proxy restart would honor it.
+#   - /self/config/mcp-gateway/   same shape: editing servers.json could add
+#                                 a server pointing at extra credentials.
+# .env is masked with bind /dev/null:ro (tmpfs cannot target a file path).
+# The two config dirs are tmpfs read_only so writes fail loudly instead of
+# silently landing in tmpfs and looking successful to the agent.
+#
+# /self/runtime/ is the same data already exposed at /state, /home/node,
+# /workspace, and so on; .gitignore keeps `git status` clean inside /self.
 services:
   sandbox:
     volumes:
       - type: bind
         source: ${AGENT_SANDBOX_SELF_DIR:?Set AGENT_SANDBOX_SELF_DIR (host path of the agent-sandbox repo) to use --self}
         target: /self
+      - type: bind
+        source: /dev/null
+        target: /self/.env
+        read_only: true
+      - type: tmpfs
+        target: /self/config/proxy-rules
+        read_only: true
+      - type: tmpfs
+        target: /self/config/mcp-gateway
+        read_only: true

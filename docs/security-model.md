@@ -20,6 +20,14 @@
 
 GitHub PAT 只注入 `mcp-gateway`。`sandbox` 与 `proxy` 都不应持有这个凭据，对 GitHub 的程序化访问只能走 mcp-gateway 暴露的 named server 路径。
 
+`bin/agent-sandbox up --self` 会把 host 上的 agent-sandbox repo 挂到 sandbox 的 `/self`（自举场景）。这条挂载会刻意遮掉三处属于 enforcement 侧的内容，避免 sandbox 在 `/self` 下读到或改写自己运行所依赖的边界配置（详见 `compose.self.yaml`）：
+
+| 路径 | 处理 | 原因 |
+| --- | --- | --- |
+| `/self/.env` | bind `/dev/null:ro` | 保护 `GITHUB_PERSONAL_ACCESS_TOKEN` 等只该给 mcp-gateway 看的密钥 |
+| `/self/config/proxy-rules/` | tmpfs read_only | 防止 sandbox 改写 blocklist 后通过 proxy 重启自动生效 |
+| `/self/config/mcp-gateway/` | tmpfs read_only | 防止 sandbox 在 servers.json 加新 named server 或改凭据路径 |
+
 ## 当前约束模型
 
 - sandbox 通过 `network_mode: "service:proxy"` 共享 proxy 的 network namespace；proxy 容器在 `nat OUTPUT` 链对 80/443 做 `REDIRECT` 到本地 Squid，应用感知不到代理存在

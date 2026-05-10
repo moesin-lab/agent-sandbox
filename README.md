@@ -93,6 +93,16 @@ agent-sandbox claude       # 进容器后 cwd = /self/sandbox
 
 `/self/runtime` 在容器里看得见，但里面的内容跟容器自己运行用的 `/state`、`/home/node`、`/workspace` 是同一份 host 数据；agent 只要不在 `/self/runtime/` 下做破坏性改动即可（跟它直接对 `/state` 干同样的事一样危险）。`.gitignore` 已经把 `runtime/*` 排掉，`git status` 在 `/self` 里不会被运行态污染。
 
+`/self` 下有几处刻意被遮，sandbox 里看到的是空文件 / 空只读目录，host 真实内容不变：
+
+| 路径 | 遮的原因 |
+| --- | --- |
+| `/self/.env` | 含 `GITHUB_PERSONAL_ACCESS_TOKEN`，PAT 只该让 mcp-gateway 看见 |
+| `/self/config/proxy-rules/` | sandbox 改 blocklist 等于自己给自己开后门，proxy 重启后生效 |
+| `/self/config/mcp-gateway/` | sandbox 改 servers.json 等于自己塞新 MCP server / 改凭据路径 |
+
+这些是 enforcement 侧的配置，自举 agent 想改就走 host：在外面编辑、`bin/agent-sandbox down && up` 重建。
+
 需要重建容器才能切换：sandbox 跑着时改 `--self` / 改 `AGENT_SANDBOX_SELF_DIR` 都得 `bin/agent-sandbox down && bin/agent-sandbox up [--self]`。
 
 ## 常用配置
