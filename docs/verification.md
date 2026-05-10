@@ -20,6 +20,8 @@ bin/agent-sandbox doctor
 
 `docker compose config` 会把宿主机环境变量展开到输出里。如果你已经导出了 `GITHUB_PERSONAL_ACCESS_TOKEN` / `ANTHROPIC_API_KEY` / `OPENAI_API_KEY`，不要把这段输出贴到外部系统。
 
+Linux + Docker Engine 下，`bin/agent-sandbox doctor` 还会检查 `runtime/{workspaces,state,logs,tool-bin}` 的 owner uid 是否为 `1000`。sandbox 容器固定以 uid `1000` 运行，原生 Linux bind mount 会保留宿主机 owner；如果不匹配，entrypoint 无法在 `/state` 等挂载里创建目录，按脚本提示执行 `sudo chown -R 1000:1000 runtime` 后再启动。
+
 ## 端到端运行验证
 
 `scripts/verify.sh` 会做以下断言：

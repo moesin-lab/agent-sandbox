@@ -1,6 +1,8 @@
 # Agent Containment Starter Kit
 
-面向 macOS + Docker Desktop 的 Agent 沙盒模板：在容器里跑 Claude Code / Codex 等编码 Agent，把出网收口到一个透明代理（默认放行 + blocklist）+ 一个 MCP 网关，避免 sandbox 直接拿 shell 撞敏感 API。
+面向 Unix-like host + Docker/Compose 的 Agent 沙盒模板：在容器里跑 Claude Code / Codex 等编码 Agent，把出网收口到一个透明代理（默认放行 + blocklist）+ 一个 MCP 网关，避免 sandbox 直接拿 shell 撞敏感 API。
+
+支持 macOS + Docker Desktop，也支持 Linux + Docker Engine。项目依赖的是 Docker daemon 与 Docker Compose v2，不依赖 Docker Desktop 这个产品本身；Linux 原生运行时更贴近容器模型，但需要额外注意 bind mount 的 UID 权限。
 
 两套启动拓扑：
 
@@ -8,6 +10,14 @@
 - 简洁：`sandbox` + `proxy`（不启用 MCP）
 
 ## 快速开始
+
+宿主机需要：
+
+- Unix-like shell 环境（`bash`、`sed`、`stat`、`readlink` 等常见工具）
+- Docker daemon
+- Docker Compose v2（`docker compose`）
+
+Linux + Docker Engine 下，sandbox 容器以 uid `1000` 运行；如果 `runtime/` 下的 bind mount 目录不是 uid `1000` 拥有，`bin/agent-sandbox doctor` / `up` 会提示修复命令。macOS + Docker Desktop 通常由 VM 层做 uid 映射，不会暴露这个问题。
 
 宿主机按需导出凭据（都是可选；CLI 没拿到 API key 会自动走 oauth）：
 
