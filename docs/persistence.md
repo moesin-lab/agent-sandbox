@@ -95,6 +95,7 @@ runtime/state/
 - `/state/home-ephemeral.local`：用户扩展的 ephemeral list；entrypoint 拒绝把保留路径（shell rc / .local/bin）转成 symlink，所以这条文件不能被用来重写启动链，但仍然能通过 symlink 把 home 里某个目录指到任意持久化位置——审计 list 时确认 target 可信。
 - `~/.claude/{hooks,commands,skills,agents,bin,scripts,statusline-command.sh}`：旧版本通过 `/state/entrypoints/claude/` 集中管理；现在直接落在 `runtime/home/.claude/` 下。
 - `~/.gitconfig`：Git alias、include、hooksPath 等配置可能改变命令行为。
+- `~/.mails/config.json`：mails CLI 的 mailbox + `mk_...` API key（hosted mails.dev 或自建 Worker 凭据）；任何能读 home 的角色都能拿到该 key 发邮件。
 
 ## 运行时工具
 

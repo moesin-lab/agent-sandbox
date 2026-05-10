@@ -86,5 +86,10 @@ USER node
 # is overridden to /tool-bin/user/npm-global for user/agent installs.
 RUN NPM_CONFIG_PREFIX=/usr/local/share/npm-global npm install -g @openai/codex
 
+# mails CLI: send/receive email via hosted mails.dev or a self-hosted Cloudflare
+# Worker. Same baked-prefix pattern as codex; credentials land in ~/.mails/
+# which the home bind mount persists automatically.
+RUN NPM_CONFIG_PREFIX=/usr/local/share/npm-global npm install -g mails
+
 ENTRYPOINT ["/usr/local/bin/sandbox-entrypoint"]
 CMD ["zsh", "-i"]

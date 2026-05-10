@@ -46,6 +46,8 @@ echo 'AIDER_MODEL=claude-sonnet-4-6' >> /state/env.local
 
 工具自带的 hooks/commands/skills 等"会影响未来执行的入口"现在直接落在 `~/.<tool>/<sub>` 下（旧版本通过 `/state/entrypoints/<tool>` 中转，已被合并掉）。host 侧审计 `runtime/home/.<tool>/{hooks,commands,skills,...}` 即可。
 
+镜像目前自带的 CLI：`claude`（managed wrapper，下载到 `/tool-bin/managed/`）、`@openai/codex`、`mails`（后两者走 `/usr/local/share/npm-global/`，不在 `/tool-bin/user/`）。新增同类 npm CLI 沿用 `NPM_CONFIG_PREFIX=/usr/local/share/npm-global npm install -g <pkg>` 这条 RUN 指令即可。
+
 ## 替换默认放行策略
 
 如果你的场景需要"默认拒绝"，在 `proxy/squid.conf` 里：

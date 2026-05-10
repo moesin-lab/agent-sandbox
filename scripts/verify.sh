@@ -168,4 +168,8 @@ sleep 2
 "${COMPOSE[@]}" exec -T sandbox sh -lc 'command -v nix-portable >/dev/null'
 "${COMPOSE[@]}" exec -T sandbox sh -lc 'nix-portable --help >/dev/null 2>&1 || nix-portable -h >/dev/null 2>&1 || test -x "$(command -v nix-portable)"'
 
+# --- new: bundled mails CLI -------------------------------------------------
+
+"${COMPOSE[@]}" exec -T sandbox sh -lc 'command -v mails >/dev/null'
+
 echo "verify: ok"
