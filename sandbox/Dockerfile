@@ -89,7 +89,8 @@ RUN NPM_CONFIG_PREFIX=/usr/local/share/npm-global npm install -g @openai/codex
 # mails CLI: send/receive email via hosted mails.dev or a self-hosted Cloudflare
 # Worker. Same baked-prefix pattern as codex; credentials land in ~/.mails/
 # which the home bind mount persists automatically.
-RUN NPM_CONFIG_PREFIX=/usr/local/share/npm-global npm install -g mails
+ARG MAILS_VERSION=1.5.5
+RUN NPM_CONFIG_PREFIX=/usr/local/share/npm-global npm install -g "mails@${MAILS_VERSION}"
 
 ENTRYPOINT ["/usr/local/bin/sandbox-entrypoint"]
 CMD ["zsh", "-i"]

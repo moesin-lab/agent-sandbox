@@ -33,7 +33,6 @@ jobs:
           for f in \
             proxy/entrypoint.sh \
             scripts/verify.sh \
-            scripts/migrate-home-to-state.sh \
             bin/agent-sandbox \
             bin/sandbox
           do
@@ -49,7 +48,6 @@ jobs:
           shellcheck --severity=error \
             proxy/entrypoint.sh \
             scripts/verify.sh \
-            scripts/migrate-home-to-state.sh \
             bin/agent-sandbox \
             bin/sandbox
 

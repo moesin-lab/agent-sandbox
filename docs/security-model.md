@@ -58,4 +58,4 @@ GitHub PAT 只注入 `mcp-gateway`。`sandbox` 与 `proxy` 都不应持有这个
 - 新的敏感集成优先做成 MCP 服务，而不是开放 proxy 出口
 - proxy blocklist 显式列出需要被收口的目的；其余视为放行
 - 视 `scripts/verify.sh` 为会修改环境的操作（启停容器）；共享环境里别直接跑
-- 定期审计 `runtime/state/entrypoints`、`runtime/state/shell`、`runtime/tool-bin/{managed,user}` 和 `runtime/state/git`
+- 定期审计高风险持久化入口：`runtime/home/.claude/{hooks,commands,skills,agents,bin,scripts}`、`runtime/home/.gitconfig`、`runtime/home/.mails/config.json`、`runtime/state/shell/*.local`、`runtime/state/env.local`、`runtime/state/home-ephemeral.local`、`runtime/tool-bin/{managed,user}`

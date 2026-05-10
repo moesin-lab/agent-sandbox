@@ -192,4 +192,3 @@ find runtime/home runtime/logs runtime/state runtime/tool-bin runtime/workspaces
 
 更早版本（`runtime/home` 直接 mount 整个 home 的版本）也兼容：把 `runtime/home/` 直接保留即可，新架构会继续在它上面跑。
 
-`scripts/migrate-home-to-state.sh` 是反向迁移（home → /state）的历史脚本，新架构下用不着，未来会清理。

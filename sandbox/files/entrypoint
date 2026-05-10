@@ -203,9 +203,14 @@ apply_ephemeral_list() {
         case "$line" in
             ''|\#*) continue ;;
         esac
-        # Split on whitespace into rel + target.
-        rel=$(printf '%s\n' "$line" | awk '{print $1}')
-        target=$(printf '%s\n' "$line" | awk '{print $2}')
+        # Split first whitespace token as rel, keep the rest (joined with a
+        # single space) as target — supports targets that contain spaces.
+        # Default IFS already covers space/tab/newline; intentional word-split.
+        # shellcheck disable=SC2086
+        set -- $line
+        rel=${1:-}
+        [ "$#" -gt 0 ] && shift
+        target=$*
         apply_ephemeral "$rel" "$target"
     done < "$file"
     unset __cr __tab
