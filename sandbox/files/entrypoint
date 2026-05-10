@@ -1,117 +1,222 @@
 #!/bin/sh
 # Sandbox container init.
 #
-# /home/node is an ephemeral tmpfs. Persistent data is exposed through a small
-# set of semantic mounts (/state, /cache, /logs, /tool-bin) and projected into
-# the home directory with symlinks. Shell startup files are regenerated from the
-# image on each start so persisted state cannot silently become startup code.
+# /home/node is a host-bind mount: anything the agent writes there persists
+# across restarts and is visible on the host side at runtime/home/. To keep
+# that tree clean of caches and IDE-server payloads, we replace a denylist of
+# subpaths with symlinks to /cache/* (tmpfs) or /state/dev-cache/* (persistent
+# but disposable) on every start.
+#
+# Shell startup files (.zshrc / .zshenv / .profile / .bashrc) are unconditionally
+# regenerated from the image so persisted home content cannot silently become
+# startup code.
 
 set -e
 
 STATE_DIR="${AGENT_SANDBOX_STATE_DIR:-/state}"
-CACHE_DIR="${XDG_CACHE_HOME:-/cache/xdg}"
 TOOL_BIN="${AGENT_SANDBOX_TOOL_BIN:-/tool-bin}"
 RUNTIME_DIR="${XDG_RUNTIME_DIR:-/tmp/xdg-runtime}"
+EPHEMERAL_DEFAULT="/etc/agent-sandbox/home-ephemeral.list"
+EPHEMERAL_USER="$STATE_DIR/home-ephemeral.local"
 
 mkdir -p \
-    "$STATE_DIR/claude" \
-    "$STATE_DIR/codex" \
-    "$STATE_DIR/entrypoints/claude" \
-    "$STATE_DIR/git" \
-    "$STATE_DIR/memsearch" \
     "$STATE_DIR/shell" \
-    "$STATE_DIR/ssh" \
-    "$STATE_DIR/xdg/config" \
-    "$STATE_DIR/xdg/data" \
-    "$STATE_DIR/xdg/state" \
+    "$STATE_DIR/dev-cache" \
     "/cache/claude" \
-    "$CACHE_DIR" \
+    "/cache/xdg" \
     "/cache/npm" \
     "/cache/pnpm-store" \
     "$TOOL_BIN/managed" \
     "$TOOL_BIN/user/bin" \
     "$TOOL_BIN/user/npm-global/bin" \
     "$RUNTIME_DIR" \
-    "$HOME/.local" \
+    "$HOME" \
+    "$HOME/.local/bin" \
     "/logs"
 
-# One-time migration: prior layout stored claude wrapper outputs flat in
-# /tool-bin. Move them into /tool-bin/managed/ so the new wrapper finds them.
+chmod 700 "$RUNTIME_DIR" 2>/dev/null || true
+
+# ---------------------------------------------------------------------------
+# One-shot migrations from older layouts. Each block is idempotent: if the
+# old path is absent, we silently no-op. Migrated content is copied (cp -a
+# preserves symlinks/permissions) and the source is renamed to a "_migrated_"
+# archive so a botched run doesn't lose state.
+# ---------------------------------------------------------------------------
+
+migrate_dir() {
+    src="$1"; dst="$2"
+    [ -d "$src" ] || return 0
+    [ -L "$src" ] && return 0
+    # Skip if already empty.
+    if [ -z "$(ls -A "$src" 2>/dev/null)" ]; then
+        rmdir "$src" 2>/dev/null || true
+        return 0
+    fi
+    mkdir -p "$dst"
+    if ! cp -a "$src/." "$dst/" 2>/dev/null; then
+        echo "sandbox-entrypoint: WARN partial migration $src -> $dst (continuing)" >&2
+    fi
+    archive="${src%/}_migrated_$(date +%Y%m%d-%H%M%S)"
+    mv "$src" "$archive"
+    echo "sandbox-entrypoint: migrated $src -> $dst (archived: $archive)" >&2
+}
+
+migrate_file() {
+    src="$1"; dst="$2"
+    [ -f "$src" ] || return 0
+    [ -L "$src" ] && return 0
+    [ -e "$dst" ] && return 0
+    mkdir -p "$(dirname "$dst")"
+    cp -p "$src" "$dst"
+    archive="${src}_migrated_$(date +%Y%m%d-%H%M%S)"
+    mv "$src" "$archive"
+    echo "sandbox-entrypoint: migrated $src -> $dst (archived: $archive)" >&2
+}
+
+# Tool-bin one-shot from a much earlier layout (kept from the previous entrypoint).
 for f in claude claude.sha256 claude.version; do
     if [ -e "$TOOL_BIN/$f" ] && [ ! -e "$TOOL_BIN/managed/$f" ]; then
         mv "$TOOL_BIN/$f" "$TOOL_BIN/managed/$f"
     fi
 done
 
-chmod 700 "$RUNTIME_DIR" "$STATE_DIR/ssh" 2>/dev/null || true
+# Old /state/entrypoints/<tool>/<sub> → $HOME/.<tool>/<sub>. Do this first so
+# real files (e.g. statusline-command.sh) win over the legacy compat symlinks
+# under /state/claude/.
+if [ -d "$STATE_DIR/entrypoints/claude" ]; then
+    for sub in agents bin commands hooks scripts skills; do
+        migrate_dir "$STATE_DIR/entrypoints/claude/$sub" "$HOME/.claude/$sub"
+    done
+    for f in statusline-command.sh statusline-command.sh.bak statusline-command.sh.wrap; do
+        migrate_file "$STATE_DIR/entrypoints/claude/$f" "$HOME/.claude/$f"
+    done
+    rmdir "$STATE_DIR/entrypoints/claude" 2>/dev/null || true
+    rmdir "$STATE_DIR/entrypoints" 2>/dev/null || true
+fi
 
-link_path() {
-    target="$1"
-    link="$2"
-    rm -rf "$link"
+# Old /state/<tool> → $HOME/.<tool>. Skip the cache symlink; ephemeral list rebuilds it.
+if [ -L "$STATE_DIR/claude/cache" ]; then
+    rm -f "$STATE_DIR/claude/cache"
+fi
+if [ -L "$STATE_DIR/claude/statusline-command.sh" ]; then
+    rm -f "$STATE_DIR/claude/statusline-command.sh"
+fi
+migrate_dir "$STATE_DIR/claude" "$HOME/.claude"
+migrate_file "$STATE_DIR/claude.json" "$HOME/.claude.json"
+migrate_dir "$STATE_DIR/codex" "$HOME/.codex"
+migrate_dir "$STATE_DIR/memsearch" "$HOME/.memsearch"
+
+# Old /state/git/{gitconfig,gitignore_global} → $HOME/.gitconfig, $HOME/.gitignore_global
+migrate_file "$STATE_DIR/git/gitconfig" "$HOME/.gitconfig"
+migrate_file "$STATE_DIR/git/gitignore_global" "$HOME/.gitignore_global"
+rmdir "$STATE_DIR/git" 2>/dev/null || true
+
+# Old /state/ssh/* → $HOME/.ssh/*
+migrate_dir "$STATE_DIR/ssh" "$HOME/.ssh"
+chmod 700 "$HOME/.ssh" 2>/dev/null || true
+
+# Old /state/xdg/* → $HOME/.config, $HOME/.local/share, $HOME/.local/state
+migrate_dir "$STATE_DIR/xdg/config" "$HOME/.config"
+migrate_dir "$STATE_DIR/xdg/data" "$HOME/.local/share"
+migrate_dir "$STATE_DIR/xdg/state" "$HOME/.local/state"
+rmdir "$STATE_DIR/xdg" 2>/dev/null || true
+
+# ---------------------------------------------------------------------------
+# Ephemeral subpath denylist: symlink known caches / IDE-server dirs out of
+# the persistent home so runtime/home/ stays clean. Default list is baked into
+# the image; users may extend via /state/home-ephemeral.local.
+# ---------------------------------------------------------------------------
+
+apply_ephemeral() {
+    rel="$1"; target="$2"
+
+    # Reject empty fields.
+    if [ -z "$rel" ] || [ -z "$target" ]; then
+        echo "sandbox-entrypoint: rejecting empty ephemeral entry" >&2
+        return
+    fi
+    # Reject relative paths that try to escape, or absolute home_rel.
+    case "$rel" in
+        /*|*..*)
+            echo "sandbox-entrypoint: rejecting unsafe ephemeral path: $rel" >&2
+            return
+            ;;
+    esac
+    # Reject startup chain / PATH-sensitive paths.
+    case "$rel" in
+        .zshrc|.zshenv|.profile|.bashrc|.bash_profile|.local/bin|.local/bin/*)
+            echo "sandbox-entrypoint: rejecting reserved ephemeral path: $rel" >&2
+            return
+            ;;
+    esac
+    # Target must be absolute.
+    case "$target" in
+        /*) ;;
+        *)
+            echo "sandbox-entrypoint: rejecting relative ephemeral target: $target" >&2
+            return
+            ;;
+    esac
+
+    link="$HOME/$rel"
+    # Make the target exist (for dirs). If target is a file path, the parent.
+    case "$target" in
+        */) mkdir -p "$target" ;;
+        *)  mkdir -p "$target" ;;  # treat as dir; callers use dirs only here
+    esac
+
+    if [ -L "$link" ]; then
+        actual=$(readlink "$link")
+        [ "$actual" = "$target" ] && return 0
+        rm -f "$link"
+    elif [ -e "$link" ]; then
+        # Existing real file/dir: move its contents into target if any, then drop.
+        if [ -d "$link" ] && [ -n "$(ls -A "$link" 2>/dev/null)" ]; then
+            cp -a "$link/." "$target/" 2>/dev/null \
+                || echo "sandbox-entrypoint: WARN partial move $link -> $target" >&2
+        elif [ -f "$link" ]; then
+            cp -p "$link" "$target/" 2>/dev/null || true
+        fi
+        rm -rf "$link"
+    fi
+
+    mkdir -p "$(dirname "$link")"
     ln -s "$target" "$link"
 }
 
-link_path "$STATE_DIR/claude" "$HOME/.claude"
-link_path "$STATE_DIR/claude.json" "$HOME/.claude.json"
-link_path "$STATE_DIR/codex" "$HOME/.codex"
-link_path "$STATE_DIR/git/gitconfig" "$HOME/.gitconfig"
-link_path "$STATE_DIR/git/gitignore_global" "$HOME/.gitignore_global"
-link_path "$STATE_DIR/memsearch" "$HOME/.memsearch"
-link_path "$STATE_DIR/ssh" "$HOME/.ssh"
-link_path "$STATE_DIR/xdg/config" "$HOME/.config"
-link_path "$CACHE_DIR" "$HOME/.cache"
-link_path "/cache/npm" "$HOME/.npm"
-link_path "/cache/pnpm-store" "$HOME/.pnpm-store"
-mkdir -p "$HOME/.local/bin"
-link_path "$STATE_DIR/xdg/data" "$HOME/.local/share"
-link_path "$STATE_DIR/xdg/state" "$HOME/.local/state"
-# zsh/bash history is persisted via HISTFILE pointing at $XDG_STATE_HOME
-# (/state/xdg/state/...). Don't symlink ~/.zsh_history / ~/.bash_history —
-# they would be dead links since HISTFILE wins and confuse anyone reading
-# the home directory.
-
-apply_entrypoint_link() {
-    spec="$1"
-    home_rel="${spec%%=*}"
-    entry_rel="${spec#*=}"
-
-    if [ -z "$home_rel" ] || [ -z "$entry_rel" ]; then
-        echo "sandbox-entrypoint: warning: rejected empty entrypoint link '$spec'" >&2
-        return
-    fi
-
-    case "$home_rel:$entry_rel" in
-        *..*|/*:*|*:/*)
-            echo "sandbox-entrypoint: warning: rejected unsafe entrypoint link '$spec'" >&2
-            return
-            ;;
-    esac
-
-    case "$home_rel" in
-        .zshrc|.zshenv|.profile|.bashrc|.bash_profile|.local/bin|.local/bin/*)
-            echo "sandbox-entrypoint: warning: rejected startup/PATH entrypoint link '$spec'" >&2
-            return
-            ;;
-    esac
-
-    target="$STATE_DIR/entrypoints/$entry_rel"
-    link="$HOME/$home_rel"
-    mkdir -p "$target" "$(dirname "$link")"
-    link_dir="$(readlink -f "$(dirname "$link")")"
-    target_link="$(realpath --relative-to="$link_dir" "$target" 2>/dev/null || printf '%s\n' "$target")"
-    rm -rf "$link"
-    ln -s "$target_link" "$link"
+apply_ephemeral_list() {
+    file="$1"
+    [ -r "$file" ] || return 0
+    __cr=$(printf '\r')
+    __tab=$(printf '\t')
+    while IFS= read -r line || [ -n "$line" ]; do
+        # Tolerate CRLF.
+        line=${line%"$__cr"}
+        # Strip leading spaces / tabs.
+        while :; do
+            case "$line" in
+                ' '*|"$__tab"*) line=${line#?} ;;
+                *) break ;;
+            esac
+        done
+        # Skip blanks/comments.
+        case "$line" in
+            ''|\#*) continue ;;
+        esac
+        # Split on whitespace into rel + target.
+        rel=$(printf '%s\n' "$line" | awk '{print $1}')
+        target=$(printf '%s\n' "$line" | awk '{print $2}')
+        apply_ephemeral "$rel" "$target"
+    done < "$file"
+    unset __cr __tab
 }
 
-DEFAULT_ENTRYPOINT_LINKS=".claude/agents=claude/agents .claude/bin=claude/bin .claude/commands=claude/commands .claude/hooks=claude/hooks .claude/scripts=claude/scripts .claude/skills=claude/skills"
-for spec in $DEFAULT_ENTRYPOINT_LINKS ${AGENT_SANDBOX_ENTRYPOINT_LINKS:-}; do
-    apply_entrypoint_link "$spec"
-done
+apply_ephemeral_list "$EPHEMERAL_DEFAULT"
+apply_ephemeral_list "$EPHEMERAL_USER"
 
-if [ ! -e "$STATE_DIR/claude/cache" ] && [ ! -L "$STATE_DIR/claude/cache" ]; then
-    ln -s "/cache/claude" "$STATE_DIR/claude/cache"
-fi
+# ---------------------------------------------------------------------------
+# /state/env.local seed.
+# ---------------------------------------------------------------------------
 
 if [ ! -e "$STATE_DIR/env.local" ]; then
     cat > "$STATE_DIR/env.local" <<'EOF'
@@ -124,21 +229,14 @@ if [ ! -e "$STATE_DIR/env.local" ]; then
 EOF
 fi
 
-if [ ! -e "$STATE_DIR/claude/statusline-command.sh" ] && [ ! -L "$STATE_DIR/claude/statusline-command.sh" ]; then
-    ln -s "../entrypoints/claude/statusline-command.sh" "$STATE_DIR/claude/statusline-command.sh"
-fi
+# ---------------------------------------------------------------------------
+# Shell startup scaffolding: regenerated from the image every start so that
+# nothing the agent writes into $HOME/.zshrc etc. survives a restart.
+# ---------------------------------------------------------------------------
 
-# /etc/agent-sandbox/zshrc is image-layer (baked in by Dockerfile). Required —
-# fail loud (set -e) if missing or unreadable rather than silently leaving the
-# user without a configured zsh, which is what the previous `[ -f ]` guard did
-# whenever EACCES bit (e.g. when BuildKit gave the parent dir mode 644).
 cp /etc/agent-sandbox/zshrc "$HOME/.zshrc"
 
 cat > "$HOME/.zshenv" <<'EOF'
-export XDG_CONFIG_HOME=${XDG_CONFIG_HOME:-/state/xdg/config}
-export XDG_DATA_HOME=${XDG_DATA_HOME:-/state/xdg/data}
-export XDG_STATE_HOME=${XDG_STATE_HOME:-/state/xdg/state}
-export XDG_CACHE_HOME=${XDG_CACHE_HOME:-/cache/xdg}
 export XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-/tmp/xdg-runtime}
 # Re-assert tool-bin paths after /etc/profile may have reset PATH on
 # login shells (Debian /etc/profile hardcodes a default PATH for non-root).
@@ -151,10 +249,6 @@ export PATH
 EOF
 
 cat > "$HOME/.profile" <<'EOF'
-export XDG_CONFIG_HOME=${XDG_CONFIG_HOME:-/state/xdg/config}
-export XDG_DATA_HOME=${XDG_DATA_HOME:-/state/xdg/data}
-export XDG_STATE_HOME=${XDG_STATE_HOME:-/state/xdg/state}
-export XDG_CACHE_HOME=${XDG_CACHE_HOME:-/cache/xdg}
 export XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-/tmp/xdg-runtime}
 for p in /usr/local/share/npm-global/bin /tool-bin/user/npm-global/bin /tool-bin/user/bin; do
     case ":$PATH:" in *":$p:"*) ;; *) PATH="$p:$PATH" ;; esac
@@ -165,7 +259,7 @@ export PATH
 EOF
 
 cat > "$HOME/.bashrc" <<'EOF'
-export HISTFILE=${XDG_STATE_HOME:-/state/xdg/state}/bash_history
+HISTFILE=$HOME/.bash_history
 [ -r /etc/agent-sandbox/env-loader.sh ] && . /etc/agent-sandbox/env-loader.sh
 [ -f /state/shell/bashrc.local ] && . /state/shell/bashrc.local
 EOF

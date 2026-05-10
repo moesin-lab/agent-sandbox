@@ -1,5 +1,12 @@
 #!/usr/bin/env bash
+# DEPRECATED: this script migrated runtime/home → runtime/state in the layout
+# where /home/node was tmpfs. The current architecture goes the other direction
+# (state → home) and is handled automatically by sandbox entrypoint at first
+# boot, so this script is no longer needed. Kept for reference; will be removed.
 set -euo pipefail
+
+echo "WARN: scripts/migrate-home-to-state.sh is deprecated; the entrypoint now" >&2
+echo "      auto-migrates legacy /state/{claude,codex,xdg,...} into runtime/home." >&2
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 SRC="${1:-$ROOT/runtime/home}"

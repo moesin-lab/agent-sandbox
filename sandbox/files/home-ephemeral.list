@@ -1,0 +1,31 @@
+# Default home-ephemeral list. Each non-comment line: "<home-relative-path> <target>"
+# At every container start, the entrypoint replaces $HOME/<path> with a symlink
+# to <target>. Intent: keep the host-side runtime/home/ tree free of caches,
+# IDE-server payloads, and other regenerable bulk.
+#
+# Lines starting with # and blank lines are ignored.
+# Add your own entries in /state/home-ephemeral.local (same format), e.g.
+#   .continue/cache /cache/continue
+#
+# Reserved targets are rejected by the entrypoint (.zshrc, .zshenv, .profile,
+# .bashrc, .bash_profile, .local/bin) so a bad list cannot rewrite the shell
+# startup chain.
+
+# Caches: discard on restart (tmpfs).
+.cache              /cache/xdg
+.npm                /cache/npm
+.pnpm-store         /cache/pnpm-store
+.local/share/Trash  /tmp/trash
+
+# Claude plugin cache: previously a hand-rolled symlink in entrypoint.
+.claude/cache       /cache/claude
+
+# Dev-tool servers: persist but disposable. Live under /state/dev-cache/ so
+# the host-side runtime/home/ tree stays free of multi-GB IDE-server payloads.
+.vscode-server      /state/dev-cache/vscode-server
+.cursor-server      /state/dev-cache/cursor-server
+.windsurf-server    /state/dev-cache/windsurf-server
+
+# nix-portable store + profiles. Same rationale: huge, regenerable, kept off
+# the main home tree.
+.nix-portable       /state/dev-cache/nix-portable

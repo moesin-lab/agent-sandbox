@@ -40,16 +40,11 @@ echo 'AIDER_MODEL=claude-sonnet-4-6' >> /state/env.local
 1. 能在镜像构建时安装的工具，放进 `sandbox/Dockerfile`，路径落在只读镜像层。
 2. 镜像 wrapper 自动下载的官方二进制（`claude` 这类），放 `/tool-bin/managed`，并提供镜像层 wrapper 调用；该子目录不在 `PATH`。
 3. 容器内动态安装但希望持久化的工具（`npm i -g`、用户拖入静态二进制、`pipx`/`cargo install`/`mise` 装出来的命令），目标位置是 `/tool-bin/user/{bin,npm-global/bin}` —— **在** `PATH`，重启后下次 shell 即生效。`pipx` / `cargo` / `mise` 等工具的安装位置可以通过 `/state/shell/zshrc.local` 设置 `PIPX_BIN_DIR=/tool-bin/user/bin`、`CARGO_HOME=/tool-bin/user/cargo` 等指过去。
-4. 工具的普通状态放 `/state`，缓存放 `/cache`。优先通过 XDG 环境变量接入；不规矩的常见 home 路径由 entrypoint 统一 symlink，不要继续新增零碎 mount。
-5. 持久化 shell 自定义写在 `/state/shell/{zshrc,zshenv,bashrc,profile}.local`，由镜像生成的启动骨架末尾 source；不要直接修改 `~/.zshrc`，会被覆盖。
+4. 系统级二进制（ffmpeg / imagemagick / 其他平时用 `apt install` 的）走 `nix-portable nix-env -iA nixpkgs.<pkg>`。store 持久化在 `/state/dev-cache/nix-portable/`，不需要 sudo / rebuild 镜像。第一次调用会做一次 store bootstrap。
+5. 工具的普通状态/配置默认就在 `~/.<tool>/`，由 home bind mount 自动持久化；缓存类目录放 `/cache`（tmpfs，重启清）。如果某个新工具会写一大堆缓存 / IDE server payload 到 `~/`，往 `/state/home-ephemeral.local` 加一行把它转到 `/cache` 或 `/state/dev-cache/` 即可。
+6. 持久化 shell 自定义写在 `/state/shell/{zshrc,zshenv,bashrc,profile}.local`，由镜像生成的启动骨架末尾 source；不要直接修改 `~/.zshrc`，会被覆盖。
 
-Claude 这类自身支持 hooks/commands/skills 的工具，要把“会影响未来执行的入口”集中放进 `/state/entrypoints/<tool>`，再通过兼容 symlink 暴露给工具原路径。新增类似目录时优先用 `AGENT_SANDBOX_ENTRYPOINT_LINKS`，例如：
-
-```env
-AGENT_SANDBOX_ENTRYPOINT_LINKS=".codex/skills=codex/skills .codex/commands=codex/commands"
-```
-
-这样新增工具入口通常只需要改配置并重建容器，不需要重新 build 镜像。
+工具自带的 hooks/commands/skills 等"会影响未来执行的入口"现在直接落在 `~/.<tool>/<sub>` 下（旧版本通过 `/state/entrypoints/<tool>` 中转，已被合并掉）。host 侧审计 `runtime/home/.<tool>/{hooks,commands,skills,...}` 即可。
 
 ## 替换默认放行策略
 

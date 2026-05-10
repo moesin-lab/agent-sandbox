@@ -24,8 +24,8 @@ GitHub PAT 只注入 `mcp-gateway`。`sandbox` 与 `proxy` 都不应持有这个
 - sandbox 通过 `network_mode: "service:proxy"` 共享 proxy 的 network namespace；proxy 容器在 `nat OUTPUT` 链对 80/443 做 `REDIRECT` 到本地 Squid，应用感知不到代理存在
 - Squid 走**默认放行 + 黑名单**：未在 `blocklist.txt` 中显式列出的目的全部放行；HTTP 由 `http_access deny` 拒绝，HTTPS 在 SslBump1 peek 到匹配 SNI 后 terminate，其余 splice 直通
 - 不做 MITM，sandbox 内不需要任何 CA
-- runtime 数据默认从仓库管理目录挂载，也可以用 `.env` 将 workspace/state/cache/logs/tool-bin 指向自定义 host 路径；sandbox 容器以 `node` 用户运行，默认关闭 passwordless sudo，并启用只读根文件系统、`no-new-privileges`、`cap_drop: ALL`、PID/CPU/内存上限
-- `/home/node` 是 tmpfs，不再作为持久化 home；entrypoint 每次启动生成 shell rc/profile 骨架（末尾 source `/state/shell/*.local` 作为持久化扩展点），并通过 XDG 环境变量和 symlink 把常见状态目录导向 `/state` 或 `/cache`
+- runtime 数据默认从仓库管理目录挂载，也可以用 `.env` 将 workspace/home/state/cache/logs/tool-bin 指向自定义 host 路径；sandbox 容器以 `node` 用户运行，默认关闭 passwordless sudo，并启用只读根文件系统、`no-new-privileges`、`cap_drop: ALL`、PID/CPU/内存上限
+- `/home/node` 是 host bind mount → `runtime/home/`，所以 `~/.<tool>` 默认持久化；entrypoint 每次启动**强制覆盖** shell rc/profile 骨架（agent 写入 `~/.zshrc` 等不会跨重启存活），并按 `home-ephemeral.list` 把已知缓存 / IDE server / nix-portable store 转到 `/cache/`（tmpfs）或 `/state/dev-cache/`（持久化但可整目录删）
 - `/tool-bin` 拆成两个子树：`managed/`（镜像 wrapper 自动下载，不在 PATH，必须经 `/usr/local/bin/<wrapper>` 调用）和 `user/{bin,npm-global/bin}`（用户/agent 主动安装，**在** PATH，重启后下次 shell 即生效）
 - GitHub MCP 通过 mcp-gateway 内置的 named server 暴露在 `/servers/github/...`，端口 8080 不在 NAT 规则里
 - 默认 `blocklist.txt` 列入 `api.github.com` 与 `uploads.github.com`，迫使对 GitHub 的程序化访问只能走 mcp-gateway
@@ -42,7 +42,7 @@ GitHub PAT 只注入 `mcp-gateway`。`sandbox` 与 `proxy` 都不应持有这个
 - **sudo 可被显式打开**。`ENABLE_PASSWORDLESS_SUDO=1` 且 `AGENT_SANDBOX_NO_NEW_PRIVILEGES=false` 适合可信开发会话，但会让 agent 能升到容器 root；跑陌生代码时应保持默认关闭。
 - **运行时工具目录仍可被投毒**。`/tool-bin/managed` 不在默认 `PATH` 且由镜像层 wrapper 进入，但它仍是可写持久化目录；本地 checksum 只能发现部分损坏或简单替换，不能抵御能同时改二进制和元数据的攻击者。需要彻底恢复时清空 `runtime/tool-bin/managed` 重新下载。
 - **`/tool-bin/user` 直接进入执行链**。这是为了让容器内 `npm i -g`、用户拖入静态二进制等操作能在重启后生效；agent 写入这里的任何可执行物，下次 shell 启动会自动 PATH 可见。该子目录的审计级别与 `/state/shell/*.local`、`/state/entrypoints/claude` 等同。
-- **持久化配置仍能影响工具行为**。例如 `/state/git/gitconfig`、`/state/entrypoints/claude`、`/state/shell/*.local` 会改变后续 Git/Claude/shell 行为；这些目录被集中放置是为了便于宿主机审计，不代表它们可信。
+- **持久化配置仍能影响工具行为**。例如 `~/.gitconfig`（位于 `runtime/home/.gitconfig`）、`~/.claude/{hooks,commands,skills,...}`、`/state/shell/*.local`、`/state/home-ephemeral.local` 都会改变后续 Git/Claude/shell 行为；home bind mount 让这些直接落到 `runtime/home/`，便于 host 侧审计，但同样不代表它们可信。entrypoint 拒绝把 `.zshrc/.zshenv/.profile/.bashrc/.bash_profile/.local/bin` 等启动链路径通过 ephemeral list 重映射，且每次启动覆盖 shell rc 骨架，所以 home 持久化不会让 `~/.zshrc` 自我增殖。
 - **镜像构建仍会直接出网**。`codex`、系统包和其它 build 依赖的获取仍通过宿主机网络，不经过本仓库的代理链路；`claude` 的运行时安装会经过 proxy 的透明代理链路。
 
 ## 主要针对的风险

@@ -10,3 +10,6 @@ runtime/tool-bin/*
 !runtime/tool-bin/.gitkeep
 .env
 *.log
+
+.memsearch/
+handoff/

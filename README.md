@@ -41,12 +41,17 @@ docs/                    # 架构、安全模型、扩展指南、验证说明
 | Host 路径 | 容器路径 | 用途 |
 | --- | --- | --- |
 | `./runtime/workspaces` | `/workspace` | 工作目录 |
-| `./runtime/state` | `/state` | CLI 登录态、session、sqlite、小数据库、普通配置 |
+| `./runtime/home` | `/home/node` | 用户 home。任何 `~/.<tool>/` 默认持久化；缓存 / IDE server / nix-portable store 由 entrypoint symlink 转到 `/cache` 或 `/state/dev-cache` |
+| `./runtime/state` | `/state` | shell 扩展、env vars、dev-cache 池（IDE server / nix-portable）、用户的 home-ephemeral 列表 |
 | `./runtime/logs` | `/logs` | 日志 |
 | `./runtime/tool-bin` | `/tool-bin` | 可持久化可执行物：`managed/`（wrapper 下载，不在 PATH）+ `user/`（npm 全局、用户安装的二进制，**在** PATH） |
 | tmpfs | `/cache` | 可重建缓存，重启即丢 |
 
-`/home/node` 不再是持久化挂载，而是 tmpfs。容器启动时 entrypoint 会用 XDG 环境变量和 symlink 把常见 home 子路径导向 `/state` 或 `/cache`，每次从镜像生成 shell 启动骨架，并在末尾 source `/state/shell/*.local`（持久化 shell 自定义）和 `/state/env.local`（持久化 `KEY=value` 环境变量）作为不需 rebuild 即可生效的扩展点。详见 [`docs/persistence.md`](docs/persistence.md)。
+`/home/node` 是宿主机 bind mount，所以容器内 `mkdir ~/.opencode && cp ... ~/.opencode/` 这类操作**自然持久化**到 `runtime/home/.opencode/`，不需要在 entrypoint 里登记。已知的"垃圾大户"（`.cache`、`.npm`、`.vscode-server`、`.cursor-server`、`.nix-portable` 等）由 entrypoint 启动时按 `home-ephemeral.list` symlink 转走，host 侧 `runtime/home/` 看着不会被这些撑爆。
+
+shell 启动文件（`.zshrc/.zshenv/.profile/.bashrc`）每次启动都从镜像版本覆盖，不能在 home 里偷偷自我增殖。持久化 shell 自定义写 `/state/shell/*.local`；持久化 `KEY=value` 环境变量写 `/state/env.local`。详见 [`docs/persistence.md`](docs/persistence.md)。
+
+需要 `apt install` 之类的系统包？sandbox 仍然 read-only root + 无 sudo，但镜像里预装了 `nix-portable`：在容器内跑 `nix-portable nix-env -iA nixpkgs.ffmpeg` 等就能装 nixpkgs 里的任何东西，store 持久化在 `/state/dev-cache/nix-portable/`，不用 rebuild 镜像。第一次调用会下载 nix store bootstrap。
 
 要把工作目录换到别的位置，在 `.env` 里设置：
 
@@ -65,6 +70,7 @@ AGENT_SANDBOX_WORKSPACE_MODE=ro
 
 ```env
 AGENT_SANDBOX_WORKSPACE_DIR=/Users/stypro/dev/sandbox-work
+AGENT_SANDBOX_HOME_DIR=/Users/stypro/.local/state/agent-sandbox/home
 AGENT_SANDBOX_STATE_DIR=/Users/stypro/.local/state/agent-sandbox/state
 AGENT_SANDBOX_LOGS_DIR=/Users/stypro/.local/state/agent-sandbox/logs
 AGENT_SANDBOX_TOOL_BIN_DIR=/Users/stypro/.local/state/agent-sandbox/tool-bin

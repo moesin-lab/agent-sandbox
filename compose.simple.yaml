@@ -42,8 +42,8 @@ services:
       - ${AGENT_SANDBOX_STATE_DIR:-./runtime/state}:/state
       - ${AGENT_SANDBOX_LOGS_DIR:-./runtime/logs}:/logs
       - ${AGENT_SANDBOX_TOOL_BIN_DIR:-./runtime/tool-bin}:/tool-bin
+      - ${AGENT_SANDBOX_HOME_DIR:-./runtime/home}:/home/node
     tmpfs:
-      - /home/node:rw,nosuid,nodev,uid=1000,gid=1000,mode=700,size=${AGENT_SANDBOX_HOME_TMPFS_SIZE:-64m}
       - /cache:rw,nosuid,nodev,uid=1000,gid=1000,mode=700,size=${AGENT_SANDBOX_CACHE_SIZE:-1g}
       - /tmp:rw,nosuid,nodev,noexec,size=${AGENT_SANDBOX_TMP_SIZE:-512m}
       - /run:rw,nosuid,nodev,size=${AGENT_SANDBOX_RUN_SIZE:-64m}
@@ -56,7 +56,6 @@ services:
       - ANTHROPIC_API_KEY
       - CLAUDE_RELEASE_TAG
       - OPENAI_API_KEY
-      - AGENT_SANDBOX_ENTRYPOINT_LINKS
     depends_on:
       - proxy
 
