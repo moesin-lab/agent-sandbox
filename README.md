@@ -128,7 +128,9 @@ agent-sandbox claude       # 进容器后 cwd = /self/sandbox
 - `~/.<tool>` 下随手写入会自然持久化（home 是 host bind mount）
 - 持久化 `KEY=value` 环境变量：写 `/state/env.local`
 - 持久化 shell 自定义：写 `/state/shell/{zshrc,zshenv,bashrc,profile}.local`（直接改 `~/.zshrc` 会被每次启动覆盖）
+- Git 全局 ignore：写 `~/.config/git/ignore`；启动时会确保 `core.excludesfile` 指向它，但不会写入私人规则
 - 装 npm 全局包：`npm i -g <pkg>` 自动落 `/tool-bin/user/npm-global/`，下次 shell 即在 PATH
+- 装静态二进制：放 `/tool-bin/user/bin`，下次 shell 即在 PATH
 - 装系统级二进制：`nix-portable nix-env -iA nixpkgs.ffmpeg`（首次会做一次 nix store bootstrap）
 - 镜像自带：`claude` wrapper（host 需提供 `runtime/tool-bin/managed/claude`）、`codex`、`mails`
 

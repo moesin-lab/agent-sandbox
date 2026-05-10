@@ -96,6 +96,7 @@ runtime/state/
 - `/state/home-ephemeral.local`：用户追加的 ephemeral list；entrypoint 拒绝把保留路径（shell rc / .local/bin）转成 symlink，所以这条文件不能被用来重写启动链，但仍然能通过 symlink 把 home 里某个目录指到任意持久化位置——审计 list 时确认 target 可信。
 - `~/.claude/{hooks,commands,skills,agents,bin,scripts,statusline-command.sh}`：旧版本通过 `/state/entrypoints/claude/` 集中管理；现在直接落在 `runtime/home/.claude/` 下。
 - `~/.gitconfig`：Git alias、include、hooksPath 等配置可能改变命令行为。
+- `~/.config/git/ignore`：Git global ignore 文件。entrypoint 每次启动只保证 `core.excludesfile` 指向它，并在缺失时创建空文件；具体忽略规则属于用户/运行态配置，不写进镜像默认值。
 - `~/.mails/config.json`：mails CLI 的 mailbox + `mk_...` API key（hosted mails.dev 或自建 Worker 凭据）；任何能读 home 的角色都能拿到该 key 发邮件。
 
 ## 运行时工具
@@ -113,6 +114,7 @@ runtime/state/
 - 用户/agent 在容器内 `npm i -g`、把静态二进制丢进 `/tool-bin/user/bin` 都会持久化并自动进 `PATH`。
 - wrapper 目标二进制由 host 放进 `/tool-bin/managed`，不进 `PATH`。
 - 配置默认走 `~/.<tool>/`，由 home bind mount 自动持久化；XDG data/state 默认走 `/state/xdg/`，通用 cache 和已知工具 cache/tmp 默认走 `/cache` tmpfs。遇到工具不认这些变量、仍往 home 写大缓存时，再写 `/state/home-ephemeral.local` 显式分流。
+- Git 的 global ignore 写 `~/.config/git/ignore`；启动时会自动设置 `core.excludesfile` 到该路径，避免旧布局里的 `~/.gitignore_global` 指向失效。
 - shell 自定义写在 `/state/shell/*.local`；不要直接修改 `~/.zshrc`，那是每次启动从镜像生成的骨架，会被覆盖。
 
 ## 系统包：nix-portable 路径
