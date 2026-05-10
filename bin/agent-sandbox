@@ -23,12 +23,12 @@ Usage:
   bin/agent-sandbox logs [default|simple]
   bin/agent-sandbox doctor
   bin/agent-sandbox <cli> [args...]
-      Run a container-side CLI (claude / codex / opencode / ...) at the
-      cwd-mapped path inside the sandbox. cwd under the workspace mount
-      (AGENT_SANDBOX_WORKSPACE_DIR; default ./runtime/workspaces) maps to
-      /workspace/<rel>; cwd under the self mount (AGENT_SANDBOX_SELF_DIR,
-      requires --self at up time) maps to /self/<rel>; otherwise falls back
-      to /workspace.
+      `shell` and container-side CLI commands (claude / codex / opencode / ...)
+      run at the cwd-mapped path inside the sandbox. cwd under the workspace
+      mount (AGENT_SANDBOX_WORKSPACE_DIR; default ./runtime/workspaces) maps
+      to /workspace/<rel>; cwd under the self mount (AGENT_SANDBOX_SELF_DIR,
+      requires --self at up time) maps to /self/<rel>; otherwise falls back to
+      /workspace.
 EOF
 }
 
@@ -239,7 +239,8 @@ quote_for_sh() {
 
 run_in_sandbox() {
   local mode workspace_dir workspace_target self_dir cwd rel container_dir
-  mode="$(resolve_mode "")"
+  mode="$(resolve_mode "${1:-}")"
+  shift
 
   workspace_dir="$(load_env_default AGENT_SANDBOX_WORKSPACE_DIR "./runtime/workspaces")"
   workspace_target="$(load_env_default AGENT_SANDBOX_WORKSPACE_TARGET "/workspace")"
@@ -324,9 +325,7 @@ case "${1:-}" in
     rm -f "$MODE_FILE" "$SELF_FILE"
     ;;
   shell)
-    mode="$(resolve_mode "${2:-}")"
-    ensure_sandbox_running "$mode"
-    compose_cmd "$mode" exec sandbox zsh -i
+    run_in_sandbox "${2:-}" zsh -i
     ;;
   logs)
     mode="$(resolve_mode "${2:-}")"
@@ -335,5 +334,5 @@ case "${1:-}" in
   doctor) doctor ;;
   '') usage; exit 1 ;;
   -h|--help) usage; exit 0 ;;
-  *) run_in_sandbox "$@" ;;
+  *) run_in_sandbox "" "$@" ;;
 esac

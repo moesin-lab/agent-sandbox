@@ -54,12 +54,13 @@ ln -s /path/to/agent-sandbox/bin/sandbox       ~/.local/bin/sandbox
 
 之后 `agent-sandbox up` / `sandbox` 在任何 cwd 都能用。
 
-### 在 host 目录直接调容器内 CLI
+### 从 host cwd 进入容器
 
-`agent-sandbox <cli> [args...]` 把 host cwd 映射到容器里的 `/workspace/<相对子路径>`，`cd` 过去再 `exec`。cwd 在 workspace 挂载范围（`AGENT_SANDBOX_WORKSPACE_DIR`，默认 `./runtime/workspaces`）之外时，回退到 `/workspace` 并在 stderr 提示，不拒绝。
+`agent-sandbox shell` 和 `agent-sandbox <cli> [args...]` 都会把 host cwd 映射到容器里的 `/workspace/<相对子路径>`，`cd` 过去再执行。cwd 在 workspace 挂载范围（`AGENT_SANDBOX_WORKSPACE_DIR`，默认 `./runtime/workspaces`）之外时，回退到 `/workspace` 并在 stderr 提示，不拒绝。
 
 ```bash
 cd runtime/workspaces/myproj/api
+agent-sandbox shell               # 进入 /workspace/myproj/api 的交互 shell
 agent-sandbox claude              # 等价 cd /workspace/myproj/api 后跑 claude
 agent-sandbox codex
 agent-sandbox pwd                 # 调试映射：输出 /workspace/myproj/api
@@ -84,10 +85,11 @@ bin/agent-sandbox up --self     # 默认拓扑 + /self 挂载
 bin/agent-sandbox up simple --self
 ```
 
-之后从 host 上 repo 任意子目录跑 `agent-sandbox <cli>`，cwd 自动映射到容器里的 `/self/<相对路径>`：
+之后从 host 上 repo 任意子目录跑 `agent-sandbox shell` 或 `agent-sandbox <cli>`，cwd 自动映射到容器里的 `/self/<相对路径>`：
 
 ```bash
 cd ~/code/agent-sandbox/sandbox
+agent-sandbox shell        # 进容器后 cwd = /self/sandbox
 agent-sandbox claude       # 进容器后 cwd = /self/sandbox
 ```
 

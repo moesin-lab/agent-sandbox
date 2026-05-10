@@ -202,7 +202,7 @@ sleep 2
 
 "${COMPOSE[@]}" exec -T sandbox sh -lc 'command -v mails >/dev/null'
 
-# --- new: agent-sandbox <cli> passthrough -----------------------------------
+# --- new: agent-sandbox shell/<cli> passthrough -----------------------------
 # Inside workspace: map cwd → /workspace/<rel>.
 # Outside workspace: fall back to /workspace (warn on stderr, don't refuse).
 
