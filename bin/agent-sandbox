@@ -1,7 +1,16 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+# Resolve the repo root through any symlinks so the script works whether it's
+# invoked directly, via a `bin/` entry on PATH, or via a symlink in PATH (e.g.
+# ~/.local/bin/agent-sandbox -> /path/to/repo/bin/agent-sandbox).
+SOURCE="${BASH_SOURCE[0]}"
+while [[ -L "$SOURCE" ]]; do
+  dir="$(cd -P "$(dirname "$SOURCE")" >/dev/null && pwd)"
+  SOURCE="$(readlink "$SOURCE")"
+  [[ "$SOURCE" != /* ]] && SOURCE="$dir/$SOURCE"
+done
+ROOT="$(cd -P "$(dirname "$SOURCE")/.." >/dev/null && pwd)"
 MODE_FILE="$ROOT/runtime/state/compose-mode"
 
 usage() {
@@ -63,7 +72,10 @@ compose_cmd() {
   shift
   local compose_file
   compose_file="$(mode_path "$mode")"
-  docker compose -f "$compose_file" "$@"
+  # --project-directory pins relative paths (build context, host volumes) and
+  # .env discovery to the repo root, so the script behaves identically no
+  # matter which cwd the user invokes it from.
+  docker compose --project-directory "$ROOT" -f "$compose_file" "$@"
 }
 
 SANDBOX_UID=1000

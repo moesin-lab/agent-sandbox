@@ -39,6 +39,21 @@ bin/agent-sandbox down
 bin/agent-sandbox logs
 ```
 
+### 装到 PATH（可选）
+
+不想每次都 `bin/agent-sandbox` 这么打，加一条到 PATH 即可，从任意目录跑都不影响 compose 解析（脚本会自动定位 repo 根，并用 `--project-directory` 把相对路径锁回去）。两种写法二选一：
+
+```bash
+# 跟着 repo 走
+echo 'export PATH="$PATH:/path/to/agent-sandbox/bin"' >> ~/.zshrc
+
+# 或者 symlink 到已有 PATH 目录
+ln -s /path/to/agent-sandbox/bin/agent-sandbox ~/.local/bin/agent-sandbox
+ln -s /path/to/agent-sandbox/bin/sandbox       ~/.local/bin/sandbox
+```
+
+之后 `agent-sandbox up` / `sandbox` 在任何 cwd 都能用。
+
 ## 常用配置
 
 主要旋钮在 `.env`（从 `.env.example` 复制）。下面只列最常碰的几项，完整列表见 `.env.example`。

@@ -35,6 +35,19 @@ cleanup() {
 
 trap cleanup EXIT
 
+# --- bin/agent-sandbox is cwd-independent + PATH/symlink-safe ---------------
+# Done before `up` so we don't pay extra container churn. doctor() only checks
+# paths under $ROOT, so passing from /tmp proves ROOT resolution worked.
+(
+  cd /tmp
+  "$ROOT/bin/agent-sandbox" doctor >/dev/null
+  PATH="$ROOT/bin:$PATH" agent-sandbox doctor >/dev/null
+)
+tmplink=$(mktemp -d)
+ln -s "$ROOT/bin/agent-sandbox" "$tmplink/agent-sandbox"
+( cd /tmp && "$tmplink/agent-sandbox" doctor >/dev/null )
+rm -rf "$tmplink"
+
 "$ROOT/bin/agent-sandbox" up
 
 # --- network plane (unchanged) ----------------------------------------------
