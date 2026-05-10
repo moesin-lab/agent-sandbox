@@ -42,6 +42,7 @@ bin/agent-sandbox doctor
 16. **User-extensible ephemeral list**：往 `/state/home-ephemeral.local` 加一行 `.test-ephemeral-verify ...`，restart 后该路径变 symlink；同样的尝试映射 `.zshrc` 会被 entrypoint 拒绝
 17. **nix-portable 入场**：`command -v nix-portable` 成功
 18. **CLI 与 cwd / 调用方式无关**：`bin/agent-sandbox doctor` 在 `/tmp` 下、通过 PATH 调用、通过 symlink 调用都成功（doctor 检查的是 `$ROOT/...` 路径，过 = ROOT 解析对）
-19. `trap cleanup EXIT` 触发 `docker compose down`
+19. **CLI 透传**：`agent-sandbox <cli>` 在 workspace 外（`/tmp`）执行被拒绝；在 `runtime/workspaces/verify-passthrough/sub` 执行 `agent-sandbox pwd` 输出 `/workspace/verify-passthrough/sub`（cwd 映射正确 + 子命令在容器内 exec）
+20. `trap cleanup EXIT` 触发 `docker compose down`
 
 任何一条失败脚本以非 0 退出。脚本写法假定从仓库根目录或 `scripts/` 目录调用都行，但务必在能启停容器的本地环境里执行。

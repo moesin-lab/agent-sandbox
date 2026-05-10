@@ -21,6 +21,10 @@ Usage:
   bin/agent-sandbox shell [default|simple]
   bin/agent-sandbox logs [default|simple]
   bin/agent-sandbox doctor
+  bin/agent-sandbox <cli> [args...]
+      Run a container-side CLI (claude / codex / opencode / ...) at the
+      cwd-mapped path inside the sandbox. cwd must be under the workspace
+      mount (AGENT_SANDBOX_WORKSPACE_DIR; default ./runtime/workspaces).
 EOF
 }
 
@@ -179,6 +183,79 @@ ensure_sandbox_running() {
   start_mode "$mode"
 }
 
+# Read a `KEY=value` line from $ROOT/.env, falling back to a default. Already-
+# exported environment wins, matching docker compose's precedence so the
+# script's view of the workspace mount agrees with what compose will mount.
+load_env_default() {
+  local key=$1 default=$2 val
+  if [[ -n "${!key:-}" ]]; then
+    printf '%s\n' "${!key}"
+    return
+  fi
+  if [[ -f "$ROOT/.env" ]]; then
+    val=$(grep -E "^${key}=" "$ROOT/.env" | tail -n1 | sed -E "s/^${key}=//")
+    val=${val%$'\r'}
+    val=${val%\"}; val=${val#\"}
+    val=${val%\'}; val=${val#\'}
+    if [[ -n "$val" ]]; then
+      printf '%s\n' "$val"
+      return
+    fi
+  fi
+  printf '%s\n' "$default"
+}
+
+# POSIX-sh-safe single-quoting so cwd / args with spaces or quotes survive
+# the trip through `sh -c` inside the container.
+quote_for_sh() {
+  printf "'%s'" "$(printf '%s' "$1" | sed "s/'/'\\\\''/g")"
+}
+
+run_in_sandbox() {
+  local mode workspace_dir workspace_target cwd rel container_dir
+  mode="$(resolve_mode "")"
+
+  workspace_dir="$(load_env_default AGENT_SANDBOX_WORKSPACE_DIR "./runtime/workspaces")"
+  workspace_target="$(load_env_default AGENT_SANDBOX_WORKSPACE_TARGET "/workspace")"
+  case "$workspace_dir" in
+    /*) ;;
+    *) workspace_dir="$ROOT/$workspace_dir" ;;
+  esac
+  if ! workspace_dir="$(cd "$workspace_dir" 2>/dev/null && pwd -P)"; then
+    printf 'agent-sandbox: workspace dir not found (AGENT_SANDBOX_WORKSPACE_DIR)\n' >&2
+    exit 1
+  fi
+
+  cwd="$(pwd -P)"
+  case "$cwd/" in
+    "$workspace_dir"/*) ;;
+    *)
+      cat >&2 <<EOF
+agent-sandbox: cwd is not inside the workspace mount; refusing to dispatch.
+  cwd:       $cwd
+  workspace: $workspace_dir
+  Either cd into the workspace, or override AGENT_SANDBOX_WORKSPACE_DIR to a
+  parent that contains your cwd.
+EOF
+      exit 1
+      ;;
+  esac
+
+  rel=${cwd#"$workspace_dir"}
+  rel=${rel#/}
+  container_dir="$workspace_target"
+  [[ -n "$rel" ]] && container_dir="$workspace_target/$rel"
+
+  ensure_sandbox_running "$mode"
+
+  local cmd a
+  cmd="cd $(quote_for_sh "$container_dir") && exec"
+  for a in "$@"; do
+    cmd="$cmd $(quote_for_sh "$a")"
+  done
+  compose_cmd "$mode" exec sandbox sh -c "$cmd"
+}
+
 case "${1:-}" in
   up)
     mode="$(resolve_mode "${2:-}")"
@@ -199,5 +276,7 @@ case "${1:-}" in
     compose_cmd "$mode" logs --tail=50
     ;;
   doctor) doctor ;;
-  *) usage; exit 1 ;;
+  '') usage; exit 1 ;;
+  -h|--help) usage; exit 0 ;;
+  *) run_in_sandbox "$@" ;;
 esac

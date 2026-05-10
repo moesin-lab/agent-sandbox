@@ -54,6 +54,19 @@ ln -s /path/to/agent-sandbox/bin/sandbox       ~/.local/bin/sandbox
 
 之后 `agent-sandbox up` / `sandbox` 在任何 cwd 都能用。
 
+### 在 host 目录直接调容器内 CLI
+
+`agent-sandbox <cli> [args...]` 把 host cwd 映射到容器里的 `/workspace/<相对子路径>`，`cd` 过去再 `exec`，前提是 cwd 在 workspace 挂载范围内（`AGENT_SANDBOX_WORKSPACE_DIR`，默认 `./runtime/workspaces`）。cwd 在挂载之外会直接拒绝。
+
+```bash
+cd runtime/workspaces/myproj/api
+agent-sandbox claude              # 等价 cd /workspace/myproj/api 后跑 claude
+agent-sandbox codex
+agent-sandbox pwd                 # 调试映射：输出 /workspace/myproj/api
+```
+
+任何容器内 `PATH` 上的二进制都能这么调（镜像自带的 `claude` / `codex` / `mails`、用户在 `/tool-bin/user/` 装的、`nix-portable` 装的），不限白名单。
+
 ## 常用配置
 
 主要旋钮在 `.env`（从 `.env.example` 复制）。下面只列最常碰的几项，完整列表见 `.env.example`。
