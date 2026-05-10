@@ -2,10 +2,10 @@
 # Sandbox container init.
 #
 # /home/node is a host-bind mount: anything the agent writes there persists
-# across restarts and is visible on the host side at runtime/home/. To keep
-# that tree clean of caches and IDE-server payloads, we replace a denylist of
-# subpaths with symlinks to /cache/* (tmpfs) or /state/dev-cache/* (persistent
-# but disposable) on every start.
+# across restarts and is visible on the host side at runtime/home/. Keep the
+# default home tree literal and easy to inspect. Common cache APIs point at
+# /cache; symlink-based diversion is only for user opt-ins in
+# /state/home-ephemeral.local.
 #
 # Shell startup files (.zshrc / .zshenv / .profile / .bashrc) are unconditionally
 # regenerated from the image so persisted home content cannot silently become
@@ -21,56 +21,55 @@ EPHEMERAL_USER="$STATE_DIR/home-ephemeral.local"
 
 mkdir -p \
     "$STATE_DIR/shell" \
+    "$STATE_DIR/shell/history" \
     "$STATE_DIR/dev-cache" \
-    "/cache/claude" \
+    "$STATE_DIR/xdg/data" \
+    "$STATE_DIR/xdg/state" \
     "/cache/xdg" \
     "/cache/npm" \
     "/cache/pnpm-store" \
+    "/cache/claude" \
     "$TOOL_BIN/managed" \
     "$TOOL_BIN/user/bin" \
     "$TOOL_BIN/user/npm-global/bin" \
     "$RUNTIME_DIR" \
     "$HOME" \
-    "$HOME/.local/bin" \
     "/logs"
 
 chmod 700 "$RUNTIME_DIR" 2>/dev/null || true
 
 # ---------------------------------------------------------------------------
-# One-shot migrations from older layouts. Each block is idempotent: if the
-# old path is absent, we silently no-op. Migrated content is copied (cp -a
-# preserves symlinks/permissions) and the source is renamed to a "_migrated_"
-# archive so a botched run doesn't lose state.
+# One-shot cleanup from older layouts. Keep active runtime paths clean: home is
+# the canonical state location now, so old /state/<tool> trees are discarded
+# instead of being auto-linked or copied back.
 # ---------------------------------------------------------------------------
 
-migrate_dir() {
-    src="$1"; dst="$2"
-    [ -d "$src" ] || return 0
-    [ -L "$src" ] && return 0
-    # Skip if already empty.
-    if [ -z "$(ls -A "$src" 2>/dev/null)" ]; then
-        rmdir "$src" 2>/dev/null || true
+remove_legacy_home_link() {
+    rel="$1"; target="$2"
+    link="$HOME/$rel"
+    [ -L "$link" ] || return 0
+
+    # Some legacy symlink paths are now covered by compose tmpfs mounts. Once a
+    # path is a mountpoint, removing it from inside the container fails with
+    # EBUSY; host-side cleanup handles any stale symlink before recreate.
+    if awk -v p="$link" '$5 == p { found=1 } END { exit found ? 0 : 1 }' /proc/self/mountinfo; then
         return 0
     fi
-    mkdir -p "$dst"
-    if ! cp -a "$src/." "$dst/" 2>/dev/null; then
-        echo "sandbox-entrypoint: WARN partial migration $src -> $dst (continuing)" >&2
-    fi
-    archive="${src%/}_migrated_$(date +%Y%m%d-%H%M%S)"
-    mv "$src" "$archive"
-    echo "sandbox-entrypoint: migrated $src -> $dst (archived: $archive)" >&2
+
+    actual=$(readlink "$link")
+    [ "$actual" = "$target" ] || return 0
+    rm -f "$link"
 }
 
-migrate_file() {
-    src="$1"; dst="$2"
-    [ -f "$src" ] || return 0
-    [ -L "$src" ] && return 0
-    [ -e "$dst" ] && return 0
-    mkdir -p "$(dirname "$dst")"
-    cp -p "$src" "$dst"
-    archive="${src}_migrated_$(date +%Y%m%d-%H%M%S)"
-    mv "$src" "$archive"
-    echo "sandbox-entrypoint: migrated $src -> $dst (archived: $archive)" >&2
+remove_legacy_path() {
+    src="$1"
+    [ -e "$src" ] || [ -L "$src" ] || return 0
+
+    if rm -rf "$src"; then
+        echo "sandbox-entrypoint: removed legacy state $src" >&2
+    else
+        echo "sandbox-entrypoint: WARN failed to remove legacy state $src" >&2
+    fi
 }
 
 # Tool-bin one-shot from a much earlier layout (kept from the previous entrypoint).
@@ -80,51 +79,59 @@ for f in claude claude.sha256 claude.version; do
     fi
 done
 
-# Old /state/entrypoints/<tool>/<sub> → $HOME/.<tool>/<sub>. Do this first so
-# real files (e.g. statusline-command.sh) win over the legacy compat symlinks
-# under /state/claude/.
-if [ -d "$STATE_DIR/entrypoints/claude" ]; then
-    for sub in agents bin commands hooks scripts skills; do
-        migrate_dir "$STATE_DIR/entrypoints/claude/$sub" "$HOME/.claude/$sub"
-    done
-    for f in statusline-command.sh statusline-command.sh.bak statusline-command.sh.wrap; do
-        migrate_file "$STATE_DIR/entrypoints/claude/$f" "$HOME/.claude/$f"
-    done
-    rmdir "$STATE_DIR/entrypoints/claude" 2>/dev/null || true
-    rmdir "$STATE_DIR/entrypoints" 2>/dev/null || true
-fi
+# Old /state-backed home compat symlinks. Drop them so the active home tree is
+# real files/dirs again; retired state paths are removed below.
+remove_legacy_home_link ".claude" "$STATE_DIR/claude"
+remove_legacy_home_link ".claude.json" "$STATE_DIR/claude.json"
+remove_legacy_home_link ".codex" "$STATE_DIR/codex"
+remove_legacy_home_link ".memsearch" "$STATE_DIR/memsearch"
+remove_legacy_home_link ".config" "$STATE_DIR/xdg/config"
+remove_legacy_home_link ".local/share" "$STATE_DIR/xdg/data"
+remove_legacy_home_link ".local/state" "$STATE_DIR/xdg/state"
+remove_legacy_home_link ".ssh" "$STATE_DIR/ssh"
+remove_legacy_home_link ".gitconfig" "$STATE_DIR/git/gitconfig"
+remove_legacy_home_link ".gitignore_global" "$STATE_DIR/git/gitignore_global"
+remove_legacy_home_link ".zsh_history" "$STATE_DIR/shell/zsh_history"
+remove_legacy_home_link ".bash_history" "$STATE_DIR/shell/bash_history"
 
-# Old /state/<tool> → $HOME/.<tool>. Skip the cache symlink; ephemeral list rebuilds it.
-if [ -L "$STATE_DIR/claude/cache" ]; then
-    rm -f "$STATE_DIR/claude/cache"
-fi
-if [ -L "$STATE_DIR/claude/statusline-command.sh" ]; then
-    rm -f "$STATE_DIR/claude/statusline-command.sh"
-fi
-migrate_dir "$STATE_DIR/claude" "$HOME/.claude"
-migrate_file "$STATE_DIR/claude.json" "$HOME/.claude.json"
-migrate_dir "$STATE_DIR/codex" "$HOME/.codex"
-migrate_dir "$STATE_DIR/memsearch" "$HOME/.memsearch"
+remove_legacy_path "$STATE_DIR/entrypoints"
+remove_legacy_path "$STATE_DIR/claude"
+remove_legacy_path "$STATE_DIR/claude.json"
+remove_legacy_path "$STATE_DIR/codex"
+remove_legacy_path "$STATE_DIR/memsearch"
+remove_legacy_path "$STATE_DIR/git"
+remove_legacy_path "$STATE_DIR/ssh"
+remove_legacy_path "$STATE_DIR/shell/zsh_history"
+remove_legacy_path "$STATE_DIR/shell/bash_history"
+remove_legacy_path "$STATE_DIR/legacy-archive"
 
-# Old /state/git/{gitconfig,gitignore_global} → $HOME/.gitconfig, $HOME/.gitignore_global
-migrate_file "$STATE_DIR/git/gitconfig" "$HOME/.gitconfig"
-migrate_file "$STATE_DIR/git/gitignore_global" "$HOME/.gitignore_global"
-rmdir "$STATE_DIR/git" 2>/dev/null || true
-
-# Old /state/ssh/* → $HOME/.ssh/*
-migrate_dir "$STATE_DIR/ssh" "$HOME/.ssh"
 chmod 700 "$HOME/.ssh" 2>/dev/null || true
 
-# Old /state/xdg/* → $HOME/.config, $HOME/.local/share, $HOME/.local/state
-migrate_dir "$STATE_DIR/xdg/config" "$HOME/.config"
-migrate_dir "$STATE_DIR/xdg/data" "$HOME/.local/share"
-migrate_dir "$STATE_DIR/xdg/state" "$HOME/.local/state"
-rmdir "$STATE_DIR/xdg" 2>/dev/null || true
+# ---------------------------------------------------------------------------
+# Retire default symlinks from the previous layout. Only links that still point
+# to the old default targets are removed; user-created links to other targets
+# are left alone.
+# ---------------------------------------------------------------------------
+
+remove_legacy_home_link ".cache" "/cache/xdg"
+remove_legacy_home_link ".npm" "/cache/npm"
+remove_legacy_home_link ".pnpm-store" "/cache/pnpm-store"
+remove_legacy_home_link ".local/share/Trash" "/tmp/trash"
+remove_legacy_home_link ".claude/cache" "/cache/claude"
+remove_legacy_home_link ".claude/cache" "/cache/claude/cache"
+remove_legacy_home_link ".claude/downloads" "/cache/claude/downloads"
+remove_legacy_home_link ".codex/cache" "/cache/codex/cache"
+remove_legacy_home_link ".codex/.tmp" "/cache/codex/dot-tmp"
+remove_legacy_home_link ".codex/tmp" "/cache/codex/tmp"
+remove_legacy_home_link ".codex/shell_snapshots" "/cache/codex/shell-snapshots"
+remove_legacy_home_link ".vscode-server" "$STATE_DIR/dev-cache/vscode-server"
+remove_legacy_home_link ".cursor-server" "$STATE_DIR/dev-cache/cursor-server"
+remove_legacy_home_link ".windsurf-server" "$STATE_DIR/dev-cache/windsurf-server"
+remove_legacy_home_link ".nix-portable" "$STATE_DIR/dev-cache/nix-portable"
 
 # ---------------------------------------------------------------------------
-# Ephemeral subpath denylist: symlink known caches / IDE-server dirs out of
-# the persistent home so runtime/home/ stays clean. Default list is baked into
-# the image; users may extend via /state/home-ephemeral.local.
+# Ephemeral subpaths: compose mounts known cache/temp paths as tmpfs, and users
+# may add more via /state/home-ephemeral.local.
 # ---------------------------------------------------------------------------
 
 apply_ephemeral() {
@@ -243,6 +250,10 @@ cp /etc/agent-sandbox/zshrc "$HOME/.zshrc"
 
 cat > "$HOME/.zshenv" <<'EOF'
 export XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-/tmp/xdg-runtime}
+export XDG_CACHE_HOME=${XDG_CACHE_HOME:-/cache/xdg}
+export XDG_DATA_HOME=${XDG_DATA_HOME:-/state/xdg/data}
+export XDG_STATE_HOME=${XDG_STATE_HOME:-/state/xdg/state}
+export NPM_CONFIG_CACHE=${NPM_CONFIG_CACHE:-/cache/npm}
 # Re-assert tool-bin paths after /etc/profile may have reset PATH on
 # login shells (Debian /etc/profile hardcodes a default PATH for non-root).
 for p in /usr/local/share/npm-global/bin /tool-bin/user/npm-global/bin /tool-bin/user/bin; do
@@ -255,6 +266,10 @@ EOF
 
 cat > "$HOME/.profile" <<'EOF'
 export XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-/tmp/xdg-runtime}
+export XDG_CACHE_HOME=${XDG_CACHE_HOME:-/cache/xdg}
+export XDG_DATA_HOME=${XDG_DATA_HOME:-/state/xdg/data}
+export XDG_STATE_HOME=${XDG_STATE_HOME:-/state/xdg/state}
+export NPM_CONFIG_CACHE=${NPM_CONFIG_CACHE:-/cache/npm}
 for p in /usr/local/share/npm-global/bin /tool-bin/user/npm-global/bin /tool-bin/user/bin; do
     case ":$PATH:" in *":$p:"*) ;; *) PATH="$p:$PATH" ;; esac
 done
@@ -264,7 +279,11 @@ export PATH
 EOF
 
 cat > "$HOME/.bashrc" <<'EOF'
-HISTFILE=$HOME/.bash_history
+export XDG_CACHE_HOME=${XDG_CACHE_HOME:-/cache/xdg}
+export XDG_DATA_HOME=${XDG_DATA_HOME:-/state/xdg/data}
+export XDG_STATE_HOME=${XDG_STATE_HOME:-/state/xdg/state}
+export NPM_CONFIG_CACHE=${NPM_CONFIG_CACHE:-/cache/npm}
+HISTFILE=/state/shell/history/bash_history
 [ -r /etc/agent-sandbox/env-loader.sh ] && . /etc/agent-sandbox/env-loader.sh
 [ -f /state/shell/bashrc.local ] && . /state/shell/bashrc.local
 EOF

@@ -18,6 +18,15 @@
 
 `/self/runtime/` 这条路径在容器里**确实可见**，但它跟 `/state`、`/home/node`、`/workspace` 是同一份 host 数据。在 `/self` 下编辑代码时**当作它不存在**——它只是因为 `/self` 是 host repo 整体挂载的副作用，不是你该编辑的对象。
 
+### 先判断自己在容器里还是宿主机
+
+自举任务开始前先确认执行环境，别凭路径名猜：
+
+- 如果当前工作目录是 `/self`，并且能看到 `/state`、`/workspace`、`/tool-bin`，你在 **sandbox 容器里**。这里没有 docker daemon，通常不能 `docker compose`、不能 rebuild 镜像；`/self` 是 host repo 的挂载，`/state` 才是当前容器运行态。
+- 如果当前工作目录是 host 上的 repo 根目录（例如能看到真实的 `runtime/` 子目录），并且 `docker` / `docker compose` 可用，你在 **宿主机**。这里可以执行 `bin/agent-sandbox down && bin/agent-sandbox up`、`scripts/verify.sh` 等端到端验证。
+- 在容器里看到 `/self/runtime/` 不代表你在宿主机；那只是 host repo 整体 bind mount 进来的副作用。不要在 `/self/runtime/` 下读写运行态，改运行态用 `/state`、`/home/node`、`/workspace`、`/tool-bin` 的容器内路径。
+- 判断命令能力时以实际命令为准：`command -v docker`、`docker compose version`、`test -d /state`、`test -d /self`。如果这些信号互相矛盾，先向 host 用户说明，不要假装完成了 rebuild 或端到端验证。
+
 ### `/self` 下被刻意遮掉的位置
 
 这几处在 sandbox 里是空的，host 真实内容没动：

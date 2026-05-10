@@ -21,16 +21,16 @@ Agent 的交互式运行环境。挂载点：
 - `runtime/home` → `/home/node`（用户 home，bind mount，自然持久化）
 - `runtime/state` → `/state`（shell 扩展、env vars、dev-cache 池）
 - `runtime/logs` → `/logs`
-- `runtime/tool-bin` → `/tool-bin`（持久化可执行物：`managed/` wrapper 下载、不在 PATH；`user/` 用户/agent 安装、**在** PATH）
+- `runtime/tool-bin` → `/tool-bin`（持久化可执行物：`managed/` host 管理、不在 PATH；`user/` 用户/agent 安装、**在** PATH）
 - tmpfs → `/cache`（可重建缓存，重启即丢）
 
-`/home/node` 是宿主机 bind mount，所以任何 `~/.<tool>` 写入默认就持久化到 host 侧 `runtime/home/.<tool>/`，不需要在 entrypoint 里登记。为了不让缓存 / IDE-server payload / nix-portable store 把这棵树占满，entrypoint 启动时按 `/etc/agent-sandbox/home-ephemeral.list`（用户可在 `/state/home-ephemeral.local` 追加）把已知的"垃圾"子路径替换为 symlink，转到 `/cache/`（tmpfs）或 `/state/dev-cache/`（持久化但可整目录删）。
+`/home/node` 是宿主机 bind mount，所以任何 `~/.<tool>` 写入默认就持久化到 host 侧 `runtime/home/.<tool>/`，不需要在 entrypoint 里登记。已知 cache / tmp 子路径会由 compose 作为 tmpfs mount 覆盖到 home 下（例如 `.cache`、`.codex/cache`、`.codex/.tmp`、`.claude/cache`），避免高 churn 文件落进 `runtime/home`，也避免 host 侧出现指向容器内路径的 broken symlink；配置、auth、sessions 仍留在 home。通用 cache 通过 `XDG_CACHE_HOME=/cache/xdg` 和 `NPM_CONFIG_CACHE=/cache/npm` 走 tmpfs，XDG data/state 通过 `XDG_DATA_HOME=/state/xdg/data` 与 `XDG_STATE_HOME=/state/xdg/state` 走 state。如果某个目录需要额外分流，用户可以在 `/state/home-ephemeral.local` 显式配置。
 
 执行链相关：
 
 - shell rc 和 profile 骨架（`.zshrc`、`.zshenv`、`.profile`、`.bashrc`）由镜像层每次启动**强制覆盖**，agent 写进 `~/.zshrc` 的内容不会跨重启存活；自定义只能落 `/state/shell/*.local`
-- shell history 通过 `HISTFILE=$HOME/.{zsh,bash}_history` 落在 home 主体上，自然 bind mount 持久化
-- XDG 环境变量除了 `XDG_RUNTIME_DIR=/tmp/xdg-runtime` 外不再显式 override，应用按默认值 `$HOME/.config`、`$HOME/.cache`、`$HOME/.local/share`、`$HOME/.local/state` 落到 home / cache，配置由 home 持久化、缓存由 ephemeral symlink 转到 tmpfs
+- shell history 通过 `HISTFILE=/state/shell/history/{zsh,bash}_history` 落在 state，不污染 home 主体
+- XDG config 仍按默认值落到 home；`XDG_CACHE_HOME=/cache/xdg`、`XDG_DATA_HOME=/state/xdg/data`、`XDG_STATE_HOME=/state/xdg/state` 配合 home 下的 cache tmpfs mount，避免 `~/.cache` 和工具 cache 内容出现在 host-backed home
 
 镜像层的 shell 启动骨架 + 共享脚本集中在 `/etc/agent-sandbox/`：
 
@@ -38,14 +38,14 @@ Agent 的交互式运行环境。挂载点：
 | --- | --- |
 | `/etc/agent-sandbox/zshrc` | entrypoint 每次 `cp` 到 `~/.zshrc` 的骨架（starship init / HISTFILE / alias / 末尾 source `/state/shell/zshrc.local`）|
 | `/etc/agent-sandbox/env-loader.sh` | `~/.zshenv` / `~/.profile` / `~/.bashrc` 都 source 它，按白名单解析 `/state/env.local` 注入环境变量 |
-| `/etc/agent-sandbox/home-ephemeral.list` | 默认 home 子路径 denylist；entrypoint 启动时把列出的路径 symlink 到 `/cache/` 或 `/state/dev-cache/`，用户可在 `/state/home-ephemeral.local` 追加自定义条目 |
-| `/usr/local/bin/nix-portable` | nixpkgs 的免 root 入口；`~/.nix-portable` 由 ephemeral list 转到 `/state/dev-cache/nix-portable` 持久化 store |
+| `/etc/agent-sandbox/home-ephemeral.list` | 用户追加分流清单模板；默认 cache/tmp 分流由 compose tmpfs mount 负责 |
+| `/usr/local/bin/nix-portable` | nixpkgs 的免 root 入口；store 默认落在 `~/.nix-portable` 并随 home 持久化 |
 
 这条目录由 Dockerfile 显式 `install -d -m 0755` 创建：BuildKit 的 `COPY --chmod=NNN` 在隐式建 parent dir 时会把同一权限值套到目录上（644 → 缺 execute 位 → node 用户读不到里面），显式 mkdir 是为了规避这个坑。改这两份文件需要 rebuild sandbox 镜像（属于"故意只能从镜像层变更"那一类）。
 
 镜像内预装的 Agent CLI：
 
-- `claude`：镜像层提供 `/usr/local/bin/claude` wrapper。首次执行时 wrapper 调用 `/usr/local/bin/install-claude`，在线下载并按官方 `manifest.json` 校验 SHA256，然后写入 `/tool-bin/managed/claude`。`/tool-bin/managed/` 不在默认 `PATH` 中，后续执行仍通过镜像层 wrapper 进入；需要 pin 版本时可设置 `CLAUDE_RELEASE_TAG`。
+- `claude`：镜像层只提供 `/usr/local/bin/claude` wrapper。真实二进制由 host 放到 `runtime/tool-bin/managed/claude`，容器内对应 `/tool-bin/managed/claude`；缺失时 wrapper 报错并提示 host 放置文件，不会联网下载。`/tool-bin/managed/` 不在默认 `PATH` 中，后续执行仍通过镜像层 wrapper 进入；如果同时提供 `/tool-bin/managed/claude.sha256`，wrapper 会在执行前校验。
 - `codex`：构建时以 `NPM_CONFIG_PREFIX=/usr/local/share/npm-global` 装在镜像层 `/usr/local/share/npm-global/bin`，镜像层即可用。运行时 `NPM_CONFIG_PREFIX` 被改为 `/tool-bin/user/npm-global`，这样容器内 `npm i -g <pkg>` 会写到持久化目录并自动进 PATH。
 
 API 凭据通过 host 环境变量透传，参考 `compose.yaml` 的 `sandbox.environment`：
@@ -100,7 +100,7 @@ sandbox 服务没有自己的 `networks` 块，因为 `network_mode: "service:pr
 
 1. `bin/agent-sandbox up` 启动默认模式；`bin/agent-sandbox up simple` 启动简洁模式。
 2. proxy 启动脚本生成自签 cert、初始化 ssl_db、装好 iptables NAT 规则、exec 到 squid。
-3. sandbox 容器入口先做一次旧布局到新布局的迁移（`/state/{claude,codex,xdg,...}` → `~/.<tool>/`），按 `home-ephemeral.list` 把已知缓存/IDE server 路径 symlink 到 `/cache/` 或 `/state/dev-cache/`，预创建 `/tool-bin/{managed,user/...}` 子目录，再用镜像版本重写 `~/.zshrc/.zshenv/.profile/.bashrc`，然后 exec 到 zsh（或 compose 指定的命令）。
+3. sandbox 容器入口先清理旧 `/state/{claude,codex,...}` 布局和上一版默认生成的 symlink，再按用户的 `/state/home-ephemeral.local`（如果存在）处理额外分流，预创建 `/cache/*`、`/state/xdg/*` 与 `/tool-bin/{managed,user/...}` 子目录，用镜像版本重写 `~/.zshrc/.zshenv/.profile/.bashrc`，然后 exec 到 zsh（或 compose 指定的命令）。
 4. sandbox 内 80/443 流量被 proxy 容器的 iptables 透明重定向到 squid；默认模式下，其它端口（含 mcp-gateway:8080）直连。
 5. 只有默认模式会注入 `MCP_GITHUB_URL`，MCP 工具调用再经 `mcp-gateway` 由 `mcp-proxy` 转 stdio。
 

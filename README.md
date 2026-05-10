@@ -37,6 +37,7 @@ bin/sandbox                # 自动沿用最近一次启动模式
 ```bash
 bin/agent-sandbox down
 bin/agent-sandbox logs
+bin/agent-sandbox runtime-audit  # 只读盘点 runtime/ 里的持久化入口和清理候选
 ```
 
 ### 装到 PATH（可选）
@@ -129,7 +130,7 @@ agent-sandbox claude       # 进容器后 cwd = /self/sandbox
 - 持久化 shell 自定义：写 `/state/shell/{zshrc,zshenv,bashrc,profile}.local`（直接改 `~/.zshrc` 会被每次启动覆盖）
 - 装 npm 全局包：`npm i -g <pkg>` 自动落 `/tool-bin/user/npm-global/`，下次 shell 即在 PATH
 - 装系统级二进制：`nix-portable nix-env -iA nixpkgs.ffmpeg`（首次会做一次 nix store bootstrap）
-- 镜像自带：`claude`（运行时按需下载）、`codex`、`mails`
+- 镜像自带：`claude` wrapper（host 需提供 `runtime/tool-bin/managed/claude`）、`codex`、`mails`
 
 ## 详细文档
 

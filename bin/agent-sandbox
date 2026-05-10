@@ -21,6 +21,7 @@ Usage:
   bin/agent-sandbox down [default|simple]
   bin/agent-sandbox shell [default|simple]
   bin/agent-sandbox logs [default|simple]
+  bin/agent-sandbox runtime-audit
   bin/agent-sandbox doctor
   bin/agent-sandbox <cli> [args...]
       `shell` and container-side CLI commands (claude / codex / opencode / ...)
@@ -331,6 +332,7 @@ case "${1:-}" in
     mode="$(resolve_mode "${2:-}")"
     compose_cmd "$mode" logs --tail=50
     ;;
+  runtime-audit) "$ROOT/scripts/runtime-audit.sh" ;;
   doctor) doctor ;;
   '') usage; exit 1 ;;
   -h|--help) usage; exit 0 ;;

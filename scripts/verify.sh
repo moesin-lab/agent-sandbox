@@ -90,27 +90,39 @@ fi
 "${COMPOSE[@]}" exec -T sandbox sh -lc 'test -w /state && test -w /cache && test -w /logs && test -w /tool-bin/managed && test -w /tool-bin/user/bin && test -w /tool-bin/user/npm-global'
 "${COMPOSE[@]}" exec -T sandbox sh -lc 'test "$NPM_CONFIG_PREFIX" = "/tool-bin/user/npm-global"'
 
-# --- new persistence layout: home is bind mount, denylist symlinks in place -
+# --- persistence layout: home is bind mount, no default symlink clutter -----
 
 # /home/node is a bind mount, NOT tmpfs.
 "${COMPOSE[@]}" exec -T sandbox sh -lc 'fs=$(stat -f -c %T /home/node); test "$fs" != tmpfs'
 
-# Denylist symlinks (caches + IDE servers) are in place at every start.
+# Default cache/temp paths are tmpfs mounts under home, so high-churn payloads
+# do not land in runtime/home and host-side home does not contain broken links.
 "${COMPOSE[@]}" exec -T sandbox sh -lc '
   set -e
+  for rel in \
+    ".cache" \
+    ".claude/cache" \
+    ".claude/downloads" \
+    ".codex/cache" \
+    ".codex/.tmp" \
+    ".codex/tmp" \
+    ".codex/shell_snapshots"; do
+    test -d "$HOME/$rel" || { echo "verify: $HOME/$rel is not a directory" >&2; exit 1; }
+    ! test -L "$HOME/$rel" || { echo "verify: $HOME/$rel is still a symlink" >&2; exit 1; }
+    fs=$(stat -f -c %T "$HOME/$rel")
+    test "$fs" = tmpfs || { echo "verify: $HOME/$rel fs is $fs, want tmpfs" >&2; exit 1; }
+  done
   for entry in \
-    ".cache:/cache/xdg" \
-    ".npm:/cache/npm" \
-    ".pnpm-store:/cache/pnpm-store" \
     ".vscode-server:/state/dev-cache/vscode-server" \
     ".cursor-server:/state/dev-cache/cursor-server" \
-    ".nix-portable:/state/dev-cache/nix-portable" \
-    ".claude/cache:/cache/claude"; do
+    ".windsurf-server:/state/dev-cache/windsurf-server" \
+    ".nix-portable:/state/dev-cache/nix-portable"; do
     rel=${entry%%:*}
     target=${entry#*:}
-    test -L "$HOME/$rel" || { echo "verify: $HOME/$rel not a symlink" >&2; exit 1; }
-    actual=$(readlink "$HOME/$rel")
-    test "$actual" = "$target" || { echo "verify: $HOME/$rel -> $actual (want $target)" >&2; exit 1; }
+    if [ -L "$HOME/$rel" ]; then
+      actual=$(readlink "$HOME/$rel")
+      test "$actual" != "$target" || { echo "verify: $HOME/$rel is still default symlink to $target" >&2; exit 1; }
+    fi
   done
 '
 
@@ -119,19 +131,67 @@ fi
 "${COMPOSE[@]}" exec -T sandbox sh -lc 'test -d /state/dev-cache'
 
 # Things previously stored under /state/{claude,codex,xdg,...} now live in $HOME directly.
-# After fresh start they may be empty dirs (created lazily); just ensure $HOME is the bind mount.
+# Active runtime paths should not keep the old state-backed compatibility layer.
 "${COMPOSE[@]}" exec -T sandbox sh -lc 'test -d "$HOME"'
-"${COMPOSE[@]}" exec -T sandbox sh -lc '! test -L "$HOME/.claude" || readlink "$HOME/.claude" | grep -qv "^/state/claude$"'
+"${COMPOSE[@]}" exec -T sandbox sh -lc '
+  set -e
+  for entry in \
+    ".claude:/state/claude" \
+    ".claude.json:/state/claude.json" \
+    ".codex:/state/codex" \
+    ".memsearch:/state/memsearch" \
+    ".config:/state/xdg/config" \
+    ".local/share:/state/xdg/data" \
+    ".local/state:/state/xdg/state" \
+    ".ssh:/state/ssh" \
+    ".gitconfig:/state/git/gitconfig" \
+    ".gitignore_global:/state/git/gitignore_global" \
+    ".zsh_history:/state/shell/zsh_history" \
+    ".bash_history:/state/shell/bash_history"; do
+    rel=${entry%%:*}
+    legacy_target=${entry#*:}
+    if [ -L "$HOME/$rel" ]; then
+      actual=$(readlink "$HOME/$rel")
+      test "$actual" != "$legacy_target" || {
+        echo "verify: $HOME/$rel is still legacy symlink to $actual" >&2
+        exit 1
+      }
+    fi
+  done
+'
+"${COMPOSE[@]}" exec -T sandbox sh -lc '
+  set -e
+  for path in \
+    /state/entrypoints \
+    /state/claude \
+    /state/claude.json \
+    /state/codex \
+    /state/memsearch \
+    /state/git \
+    /state/ssh \
+    /state/legacy-archive \
+    /state/shell/zsh_history \
+    /state/shell/bash_history; do
+    ! test -e "$path" || {
+      echo "verify: legacy state path still active: $path" >&2
+      exit 1
+    }
+  done
+'
 
-# XDG: explicit overrides removed; apps fall back to $HOME/.<x> defaults, which
-# under the new layout means home (persistent) or, for $HOME/.cache, the
-# ephemeral symlink that lands on /cache/xdg.
+# XDG config stays in persistent home. XDG cache goes to tmpfs /cache, while
+# XDG data/state go to /state so runtime/home stays clean without symlinks.
 "${COMPOSE[@]}" exec -T sandbox sh -lc '
   config=${XDG_CONFIG_HOME:-$HOME/.config}
-  cache=${XDG_CACHE_HOME:-$HOME/.cache}
+  cache=${XDG_CACHE_HOME:-}
+  data=${XDG_DATA_HOME:-}
+  state=${XDG_STATE_HOME:-}
   case "$config" in /home/node/*|"$HOME"/*) ;; *) echo "config dir outside home: $config" >&2; exit 1;; esac
-  case "$cache"  in /home/node/*|"$HOME"/*|/cache/*) ;; *) echo "cache dir not home/cache: $cache" >&2; exit 1;; esac
-  mkdir -p "$config" "$cache" && test -w "$config" && test -w "$cache"
+  test "$cache" = /cache/xdg || { echo "XDG_CACHE_HOME is $cache, want /cache/xdg" >&2; exit 1; }
+  test "$data" = /state/xdg/data || { echo "XDG_DATA_HOME is $data, want /state/xdg/data" >&2; exit 1; }
+  test "$state" = /state/xdg/state || { echo "XDG_STATE_HOME is $state, want /state/xdg/state" >&2; exit 1; }
+  test "${NPM_CONFIG_CACHE:-}" = /cache/npm || { echo "NPM_CONFIG_CACHE is ${NPM_CONFIG_CACHE:-}, want /cache/npm" >&2; exit 1; }
+  mkdir -p "$config" "$cache" "$data" "$state" && test -w "$config" && test -w "$cache" && test -w "$data" && test -w "$state"
 '
 
 # --- shell rc scaffold + env-loader (regenerated every start) ---------------
@@ -145,6 +205,9 @@ fi
 "${COMPOSE[@]}" exec -T sandbox sh -lc 'grep -q "/state/shell/zshenv.local" /home/node/.zshenv'
 "${COMPOSE[@]}" exec -T sandbox sh -lc 'grep -q "/state/shell/profile.local" /home/node/.profile'
 "${COMPOSE[@]}" exec -T sandbox sh -lc 'grep -q "/state/shell/bashrc.local" /home/node/.bashrc'
+"${COMPOSE[@]}" exec -T sandbox sh -lc 'grep -q "HISTFILE=/state/shell/history/zsh_history" /home/node/.zshrc'
+"${COMPOSE[@]}" exec -T sandbox sh -lc 'grep -q "HISTFILE=/state/shell/history/bash_history" /home/node/.bashrc'
+"${COMPOSE[@]}" exec -T sandbox sh -lc 'test -d /state/shell/history'
 
 # Shell rc is regenerated every start: write garbage, restart, verify it's gone.
 "${COMPOSE[@]}" exec -T sandbox sh -lc 'echo "echo VERIFY_GARBAGE" >> /home/node/.zshrc'

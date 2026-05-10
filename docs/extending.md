@@ -38,15 +38,15 @@ echo 'AIDER_MODEL=claude-sonnet-4-6' >> /state/env.local
 优先级：
 
 1. 能在镜像构建时安装的工具，放进 `sandbox/Dockerfile`，路径落在只读镜像层。
-2. 镜像 wrapper 自动下载的官方二进制（`claude` 这类），放 `/tool-bin/managed`，并提供镜像层 wrapper 调用；该子目录不在 `PATH`。
+2. host 手动管理、由镜像 wrapper 调用的二进制（`claude` 这类），放 `/tool-bin/managed`；该子目录不在 `PATH`。
 3. 容器内动态安装但希望持久化的工具（`npm i -g`、用户拖入静态二进制、`pipx`/`cargo install`/`mise` 装出来的命令），目标位置是 `/tool-bin/user/{bin,npm-global/bin}` —— **在** `PATH`，重启后下次 shell 即生效。`pipx` / `cargo` / `mise` 等工具的安装位置可以通过 `/state/shell/zshrc.local` 设置 `PIPX_BIN_DIR=/tool-bin/user/bin`、`CARGO_HOME=/tool-bin/user/cargo` 等指过去。
-4. 系统级二进制（ffmpeg / imagemagick / 其他平时用 `apt install` 的）走 `nix-portable nix-env -iA nixpkgs.<pkg>`。store 持久化在 `/state/dev-cache/nix-portable/`，不需要 sudo / rebuild 镜像。第一次调用会做一次 store bootstrap。
-5. 工具的普通状态/配置默认就在 `~/.<tool>/`，由 home bind mount 自动持久化；缓存类目录放 `/cache`（tmpfs，重启清）。如果某个新工具会写一大堆缓存 / IDE server payload 到 `~/`，往 `/state/home-ephemeral.local` 加一行把它转到 `/cache` 或 `/state/dev-cache/` 即可。
+4. 系统级二进制（ffmpeg / imagemagick / 其他平时用 `apt install` 的）走 `nix-portable nix-env -iA nixpkgs.<pkg>`。store 默认在 `~/.nix-portable/` 随 home 持久化，不需要 sudo / rebuild 镜像。第一次调用会做一次 store bootstrap。
+5. 工具的普通配置默认就在 `~/.<tool>/`，由 home bind mount 自动持久化；XDG data/state 默认走 `/state/xdg/`，通用 cache 默认走 `/cache`（`XDG_CACHE_HOME=/cache/xdg`、`XDG_DATA_HOME=/state/xdg/data`、`XDG_STATE_HOME=/state/xdg/state`、`NPM_CONFIG_CACHE=/cache/npm`）。compose 默认也会把 `.cache`、`.claude/cache`、`.codex/cache`、`.codex/.tmp` 等已知 cache/tmp 路径挂成 tmpfs。如果某个新工具不认这些变量、仍往 home 写大缓存 / IDE server payload，可以往 `/state/home-ephemeral.local` 加一行显式把它转到 `/cache` 或 `/state/dev-cache/`。
 6. 持久化 shell 自定义写在 `/state/shell/{zshrc,zshenv,bashrc,profile}.local`，由镜像生成的启动骨架末尾 source；不要直接修改 `~/.zshrc`，会被覆盖。
 
 工具自带的 hooks/commands/skills 等"会影响未来执行的入口"现在直接落在 `~/.<tool>/<sub>` 下（旧版本通过 `/state/entrypoints/<tool>` 中转，已被合并掉）。host 侧审计 `runtime/home/.<tool>/{hooks,commands,skills,...}` 即可。
 
-镜像目前自带的 CLI：`claude`（managed wrapper，下载到 `/tool-bin/managed/`）、`@openai/codex`、`mails`（后两者走 `/usr/local/share/npm-global/`，不在 `/tool-bin/user/`）。新增同类 npm CLI 沿用 `NPM_CONFIG_PREFIX=/usr/local/share/npm-global npm install -g <pkg>` 这条 RUN 指令即可。
+镜像目前自带的 CLI：`claude`（managed wrapper，要求 host 提供 `runtime/tool-bin/managed/claude`）、`@openai/codex`、`mails`（后两者走 `/usr/local/share/npm-global/`，不在 `/tool-bin/user/`）。新增同类 npm CLI 沿用 `NPM_CONFIG_PREFIX=/usr/local/share/npm-global npm install -g <pkg>` 这条 RUN 指令即可。
 
 ## 替换默认放行策略
 

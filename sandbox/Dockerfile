@@ -33,8 +33,10 @@ RUN if [ "$ENABLE_PASSWORDLESS_SUDO" = "1" ]; then \
 # Runtime NPM_CONFIG_PREFIX points at /tool-bin/user/npm-global so user/agent
 # `npm i -g` installs persist without rebuilding the image.
 RUN mkdir -p /usr/local/share/npm-global \
+    && mkdir -p /cache/xdg \
     && mkdir -p /cache/npm \
-    && chown -R node:node /usr/local/share/npm-global /cache
+    && mkdir -p /state/xdg/data /state/xdg/state \
+    && chown -R node:node /usr/local/share/npm-global /cache /state
 
 ENV TZ=America/Los_Angeles
 RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
@@ -43,6 +45,9 @@ ENV LANG=en_US.UTF-8 \
     LC_ALL=en_US.UTF-8 \
     EDITOR=vim \
     SHELL=/bin/zsh \
+    XDG_CACHE_HOME=/cache/xdg \
+    XDG_DATA_HOME=/state/xdg/data \
+    XDG_STATE_HOME=/state/xdg/state \
     NPM_CONFIG_PREFIX=/tool-bin/user/npm-global \
     NPM_CONFIG_CACHE=/cache/npm \
     AGENT_SANDBOX_RUNTIME=/state \
@@ -53,8 +58,8 @@ ENV LANG=en_US.UTF-8 \
 # nix-portable: a single static binary that gives the agent a working `nix`
 # without root, daemon, or system-wide install. Lets users install ffmpeg /
 # imagemagick / etc. from nixpkgs without rebuilding the image. The store
-# lives under ~/.nix-portable, which the entrypoint redirects to
-# /state/dev-cache/nix-portable via the home-ephemeral list.
+# lives under ~/.nix-portable by default; users can redirect it with
+# /state/home-ephemeral.local if they want it out of the home tree.
 ARG TARGETARCH
 ARG NIX_PORTABLE_VERSION=v012
 RUN case "${TARGETARCH:-amd64}" in \
@@ -72,7 +77,6 @@ RUN case "${TARGETARCH:-amd64}" in \
 RUN install -d -m 0755 /etc/agent-sandbox
 
 COPY --chmod=755 files/entrypoint /usr/local/bin/sandbox-entrypoint
-COPY --chmod=755 files/install-claude /usr/local/bin/install-claude
 COPY --chmod=755 files/claude /usr/local/bin/claude
 COPY --chmod=644 files/zshrc /etc/agent-sandbox/zshrc
 COPY --chmod=644 files/env-loader.sh /etc/agent-sandbox/env-loader.sh

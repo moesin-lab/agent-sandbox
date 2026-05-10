@@ -6,18 +6,21 @@ tool="$tool_dir/claude"
 sum="$tool.sha256"
 
 if [ ! -x "$tool" ]; then
-    /usr/local/bin/install-claude
+    cat >&2 <<EOF
+claude: missing executable: $tool
+Put the Claude binary on the host at:
+  runtime/tool-bin/managed/claude
+Then make it executable:
+  chmod 0755 runtime/tool-bin/managed/claude
+EOF
+    exit 127
 fi
 
 if [ -f "$sum" ]; then
     if ! sha256sum -c "$sum" >/dev/null 2>&1; then
-        printf 'claude: checksum mismatch for %s; reinstalling\n' "$tool" >&2
-        /usr/local/bin/install-claude --force
-        sha256sum -c "$sum" >/dev/null
+        printf 'claude: checksum mismatch for %s\n' "$tool" >&2
+        exit 1
     fi
-else
-    printf 'claude: checksum metadata missing for %s; reinstalling\n' "$tool" >&2
-    /usr/local/bin/install-claude --force
 fi
 
 exec "$tool" "$@"

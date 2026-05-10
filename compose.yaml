@@ -31,6 +31,9 @@ services:
     init: true
     security_opt:
       - no-new-privileges:${AGENT_SANDBOX_NO_NEW_PRIVILEGES:-true}
+      # Codex/bubblewrap needs user namespaces; Docker's default seccomp
+      # profile blocks the required unshare/clone calls.
+      - seccomp:unconfined
     read_only: ${AGENT_SANDBOX_READ_ONLY_ROOT:-true}
     cap_drop:
       - ALL
@@ -48,6 +51,13 @@ services:
       - ${AGENT_SANDBOX_HOME_DIR:-./runtime/home}:/home/node
     tmpfs:
       - /cache:rw,nosuid,nodev,uid=1000,gid=1000,mode=700,size=${AGENT_SANDBOX_CACHE_SIZE:-1g}
+      - /home/node/.cache:rw,nosuid,nodev,uid=1000,gid=1000,mode=700,size=${AGENT_SANDBOX_HOME_CACHE_SIZE:-256m}
+      - /home/node/.claude/cache:rw,nosuid,nodev,uid=1000,gid=1000,mode=700,size=${AGENT_SANDBOX_TOOL_CACHE_SIZE:-512m}
+      - /home/node/.claude/downloads:rw,nosuid,nodev,uid=1000,gid=1000,mode=700,size=${AGENT_SANDBOX_TOOL_CACHE_SIZE:-512m}
+      - /home/node/.codex/cache:rw,nosuid,nodev,uid=1000,gid=1000,mode=700,size=${AGENT_SANDBOX_TOOL_CACHE_SIZE:-512m}
+      - /home/node/.codex/.tmp:rw,nosuid,nodev,uid=1000,gid=1000,mode=700,size=${AGENT_SANDBOX_TOOL_CACHE_SIZE:-512m}
+      - /home/node/.codex/tmp:rw,nosuid,nodev,uid=1000,gid=1000,mode=700,size=${AGENT_SANDBOX_TOOL_CACHE_SIZE:-512m}
+      - /home/node/.codex/shell_snapshots:rw,nosuid,nodev,uid=1000,gid=1000,mode=700,size=${AGENT_SANDBOX_TOOL_CACHE_SIZE:-512m}
       - /tmp:rw,nosuid,nodev,noexec,size=${AGENT_SANDBOX_TMP_SIZE:-512m}
       - /run:rw,nosuid,nodev,size=${AGENT_SANDBOX_RUN_SIZE:-64m}
       - /var/tmp:rw,nosuid,nodev,noexec,size=${AGENT_SANDBOX_TMP_SIZE:-512m}
@@ -57,8 +67,13 @@ services:
     # so these env vars are only the API-key path; either works).
     environment:
       - MCP_GITHUB_URL=http://mcp-gateway:8080/servers/github/mcp
+      - HTTP_PROXY=
+      - HTTPS_PROXY=
+      - ALL_PROXY=
+      - http_proxy=
+      - https_proxy=
+      - all_proxy=
       - ANTHROPIC_API_KEY
-      - CLAUDE_RELEASE_TAG
       - OPENAI_API_KEY
     depends_on:
       proxy:
